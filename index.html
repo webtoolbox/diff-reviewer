@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Diff Reviewer</title>
+  <link rel="stylesheet" type="text/css" href="node_modules/diff2html/bundles/css/diff2html.min.css">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0d1117; color: #c9d1d9; }
+
+    /* Top floating bar */
+    #review-bar {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+      background: #161b22; border-bottom: 1px solid #30363d;
+      padding: 10px 20px; display: flex; align-items: center; gap: 12px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+      height: 52px;
+    }
+    #review-bar .pr-info { flex: 1; font-size: 14px; color: #8b949e; }
+    #review-bar .pr-info strong { color: #c9d1d9; }
+    #review-bar button {
+      padding: 8px 16px; border: 1px solid #30363d; border-radius: 6px;
+      font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s;
+    }
+    #review-bar button:disabled { cursor: not-allowed; }
+    #btn-approve { background: #238636; color: #fff; border-color: #238636; }
+    #btn-approve:hover:not(:disabled) { background: #2ea043; }
+    #btn-request-changes { background: #da3633; color: #fff; border-color: #da3633; }
+    #btn-request-changes:hover:not(:disabled) { background: #f85149; }
+    #btn-comment { background: #21262d; color: #c9d1d9; }
+    #btn-comment:hover:not(:disabled) { background: #30363d; }
+    #btn-open { background: #21262d; color: #c9d1d9; }
+    #btn-open:hover { background: #30363d; }
+
+    /* Main content */
+    #content { margin-top: 52px; padding: 20px; }
+
+    /* Empty state */
+    #empty-state {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      height: calc(100vh - 52px); color: #8b949e; font-size: 16px; gap: 12px;
+    }
+    #empty-state .hint { font-size: 13px; color: #484f58; }
+
+    /* Diff container - hidden by default */
+    #diff-container { display: none; }
+    #review-body-container { display: none; padding: 20px 0; }
+
+    /* Comment dialog */
+    .comment-dialog textarea {
+      width: 100%; height: 80px; background: #0d1117; border: 1px solid #30363d;
+      border-radius: 6px; color: #c9d1d9; padding: 8px; font-size: 13px; resize: vertical;
+      font-family: inherit;
+    }
+    .comment-dialog textarea:focus { outline: none; border-color: #58a6ff; }
+    .comment-dialog .actions { margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end; }
+    .comment-dialog button {
+      padding: 6px 12px; border-radius: 6px; border: 1px solid #30363d;
+      font-size: 12px; cursor: pointer;
+    }
+    .comment-dialog .btn-cancel { background: #21262d; color: #c9d1d9; }
+    .comment-dialog .btn-cancel:hover { background: #30363d; }
+    .comment-dialog .btn-submit { background: #238636; color: #fff; border-color: #238636; }
+    .comment-dialog .btn-submit:hover { background: #2ea043; }
+
+    /* Line comment markers */
+    .line-comment-marker {
+      background: #161b22; border-left: 3px solid #58a6ff; padding: 8px 12px;
+      font-size: 13px; color: #8b949e; border-bottom: 1px solid #21262d;
+    }
+    .line-comment-marker td { padding: 8px 12px; }
+    .line-comment-marker .comment-text { color: #c9d1d9; margin-top: 4px; display: block; }
+    .line-comment-marker strong { color: #58a6ff; }
+
+    /* Inline comment form (inserted between lines in a pane) */
+    .d2h-file-side-diff { overflow-y: visible !important; }
+    .comment-form-row td { padding: 4px !important; max-width: 50vw; overflow: hidden; }
+    .comment-form-row .comment-form {
+      background: #161b22; border-left: 3px solid #58a6ff;
+      border-top: 1px solid #21262d; border-bottom: 1px solid #21262d;
+      padding: 6px 8px;
+      max-width: calc(50vw - 30px); /* Constrain to pane width */
+      overflow: hidden;
+    }
+    .comment-form-row .comment-label {
+      font-size: 11px; color: #58a6ff; margin-bottom: 4px;
+    }
+    .comment-form-row textarea {
+      width: 100%; height: 50px; background: #0d1117; color: #c9d1d9;
+      border: 1px solid #30363d; border-radius: 4px; padding: 4px 6px;
+      font-family: inherit; font-size: 12px; resize: vertical;
+      box-sizing: border-box; display: block; margin-bottom: 4px;
+    }
+    .comment-form-row textarea:focus {
+      outline: none; border-color: #58a6ff;
+    }
+    .comment-form-row .actions {
+      display: flex; justify-content: flex-end; gap: 4px;
+    }
+    .comment-form-row .btn-cancel {
+      background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;
+    }
+    .comment-form-row .btn-submit {
+      background: #238636; color: #fff; border: none;
+      padding: 3px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;
+    }
+
+    /* Comment marker edit/delete */
+    .line-comment-marker .comment-actions { margin-top: 4px; }
+    .line-comment-marker .comment-actions button {
+      background: none; border: none; color: #58a6ff; cursor: pointer;
+      font-size: 11px; padding: 0; margin-right: 8px;
+    }
+    .line-comment-marker .comment-actions button:hover { text-decoration: underline; }
+    .line-comment-marker .btn-delete { color: #f85149 !important; }
+    .line-comment-marker.ai-tagged { border-left-color: #8957e5; }
+    .line-comment-marker .ai-tag {
+      background: #8957e5; color: #fff; font-size: 10px; padding: 1px 5px;
+      border-radius: 3px; margin-right: 4px;
+    }
+
+    /* File-level comment button */
+    .file-comment-btn {
+      background: #21262d; color: #8b949e; border: 1px solid #30363d;
+      padding: 2px 8px; border-radius: 4px; cursor: pointer; font-size: 11px;
+      margin-left: 8px; transition: all 0.15s;
+    }
+    .file-comment-btn:hover { background: #30363d; color: #c9d1d9; }
+    .file-comment-btn .comment-count {
+      background: #58a6ff; color: #0d1117; border-radius: 10px;
+      padding: 0 5px; font-size: 10px; margin-left: 3px;
+    }
+
+    /* File-level comment marker */
+    .file-comment-marker {
+      background: #161b22; border-left: 3px solid #58a6ff; padding: 8px 12px;
+      font-size: 13px; color: #8b949e; border-bottom: 1px solid #21262d;
+      border-radius: 0 0 3px 3px;
+    }
+    .file-comment-marker .comment-text { color: #c9d1d9; margin-top: 4px; display: block; }
+    .file-comment-marker strong { color: #58a6ff; }
+    .file-comment-marker .comment-actions { margin-top: 4px; }
+    .file-comment-marker .comment-actions button {
+      background: none; border: none; color: #58a6ff; cursor: pointer;
+      font-size: 11px; padding: 0; margin-right: 8px;
+    }
+    .file-comment-marker .comment-actions button:hover { text-decoration: underline; }
+    .file-comment-marker .btn-delete { color: #f85149 !important; }
+    .file-comment-marker.ai-tagged { border-left-color: #8957e5; }
+
+    /* Shortcut hints */
+    .shortcut-hint {
+      font-size: 11px; color: #484f58; font-weight: normal; margin-left: 6px;
+    }
+
+    /* Line comment buttons */
+    .line-comment-btn {
+      display: none; position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+      width: 22px; height: 22px;
+      background: #238636; color: #fff; border: none; border-radius: 50%;
+      font-size: 14px; cursor: pointer; line-height: 22px; text-align: center;
+      z-index: 10; padding: 0;
+    }
+    .line-comment-btn:hover { background: #2ea043; transform: translateY(-50%) scale(1.1); }
+    .d2h-code-side-line:hover .line-comment-btn { display: block; }
+    .d2h-code-line:hover .line-comment-btn { display: block; }
+    .d2h-code-side-line, .d2h-code-line { position: relative; }
+
+    /* Review body */
+    #review-body-container h3 { margin-bottom: 8px; color: #8b949e; font-size: 14px; }
+    #review-body {
+      width: 100%; height: 120px; background: #0d1117; border: 1px solid #30363d;
+      border-radius: 6px; color: #c9d1d9; padding: 12px; font-size: 14px; resize: vertical;
+      font-family: inherit;
+    }
+    #review-body:focus { outline: none; border-color: #58a6ff; }
+
+    /* Dark theme overrides for diff2html */
+    .d2h-dark-color-scheme { background-color: #0d1117; }
+
+    /* File list - collapsible with max height */
+    .d2h-file-list-wrapper { margin-bottom: 10px; }
+    .d2h-file-list { max-height: 200px; overflow-y: auto; }
+    .d2h-file-list::-webkit-scrollbar { width: 6px; }
+    .d2h-file-list::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    .d2h-file-list::-webkit-scrollbar-track { background: #0d1117; }
+
+    /* Drag overlay */
+    #drag-overlay {
+      display: none; position: fixed; top: 52px; left: 0; right: 0; bottom: 0;
+      background: rgba(56,139,253,0.1); border: 2px dashed #58a6ff; z-index: 999;
+      align-items: center; justify-content: center; font-size: 20px; color: #58a6ff;
+    }
+    #drag-overlay.active { display: flex; }
+  </style>
+</head>
+<body>
+  <div id="review-bar">
+    <button id="btn-open">Open Diff</button>
+    <div class="pr-info" id="pr-info">No diff loaded</div>
+    <div id="pr-number-wrapper" style="display:none">
+      <label for="pr-number" style="font-size:12px;color:#8b949e;margin-right:4px">PR #</label>
+      <input type="text" id="pr-number" placeholder="#" style="width:60px;padding:4px 8px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;font-size:13px;text-align:center;">
+    </div>
+    <button id="btn-comment" style="display:none" title="Cmd+Shift+C">Comment</button>
+    <button id="btn-request-changes" style="display:none" title="Cmd+Shift+R">Request Changes</button>
+    <button id="btn-approve" style="display:none" title="Cmd+Shift+A">Approve</button>
+  </div>
+
+  <div id="content">
+    <div id="empty-state">
+      <div>Open a .diff file to begin reviewing</div>
+      <div class="hint">Click "Open Diff" or drag and drop a file</div>
+    </div>
+    <div id="diff-container"></div>
+    <div id="review-body-container">
+      <h3>Review Summary <span class="shortcut-hint">(Cmd+Shift+Enter to submit)</span></h3>
+      <textarea id="review-body" placeholder="Add an overall review comment (optional)..." title="Cmd+Shift+Enter to submit review"></textarea>
+    </div>
+  </div>
+
+    <textarea id="comment-text" placeholder="Write a comment..."></textarea>
+    <div class="actions">
+      <button class="btn-cancel" id="comment-cancel">Cancel</button>
+      <button class="btn-submit" id="comment-submit">Add Comment</button>
+    </div>
+  </div>
+
+  <div id="drag-overlay">Drop .diff file here</div>
+
+  <script src="node_modules/diff2html/bundles/js/diff2html.min.js"></script>
+  <script src="renderer.js"></script>
+</body>
+</html>

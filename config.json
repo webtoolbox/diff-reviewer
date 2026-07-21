@@ -1,0 +1,6 @@
+{
+  "aiCommand": "hermes",
+  "aiSendArgs": ["send", "--to"],
+  "aiChatId": null,
+  "reviewSaveDir": "~/.hermes/profiles/wt/diff-reviews/pending"
+}

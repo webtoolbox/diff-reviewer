@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+*.dmg
+*.zip
+*.deb
+*.rpm
+.DS_Store
+Thumbs.db
+*.log
+drafts/
