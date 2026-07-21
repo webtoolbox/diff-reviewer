@@ -10,6 +10,11 @@
   },
   "repoOwner": "",
   "repoName": "",
+  "diff": {
+    "mode": "since-review",
+    "excludeMerges": true,
+    "codeFileExtensions": [".pm", ".cgi", ".js", ".tpl", ".css", ".less", ".json"]
+  },
   "imageUpload": {
     "enabled": false,
     "provider": "s3",

@@ -250,26 +250,184 @@ function uploadImageToS3(imageDataUrl, fileName) {
 }
 
 // Generate diff for a PR
-function generateDiff(prNumber) {
+// Helper: exec with promise
+function execPromise(cmd, options = {}) {
   return new Promise((resolve, reject) => {
-    const repoPath = path.join(app.getPath('home'), 'Website-Toolbox');
-    const owner = appConfig.repoOwner || 'webtoolbox';
-    const repo = appConfig.repoName || 'Website-Toolbox';
-
-    exec(`gh api repos/${owner}/${repo}/pulls/${prNumber} --jq '.base.sha, .head.sha'`, { cwd: repoPath }, (err, stdout) => {
-      if (err) return reject(new Error(`Failed to get PR info: ${err.message}`));
-      const [baseSha, headSha] = stdout.trim().split('\n');
-      if (!baseSha || !headSha) return reject(new Error('Could not parse PR SHAs'));
-
-      const cmd = `git diff ${baseSha}..${headSha} -- '*.pm' '*.cgi' '*.js' '*.tpl' '*.css' '*.less' '*.json'`;
-      exec(cmd, { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 }, (err2, diffOut) => {
-        if (err2) return reject(new Error(`Failed to generate diff: ${err2.message}`));
-        const tmpPath = path.join(getGeneratedDir(), `pr-${prNumber}-clean.diff`);
-        fs.writeFileSync(tmpPath, diffOut);
-        resolve({ diffPath: tmpPath, baseSha, headSha });
-      });
+    exec(cmd, { maxBuffer: 10 * 1024 * 1024, ...options }, (err, stdout, stderr) => {
+      if (err) reject(new Error(`${err.message}\n${stderr || ''}`));
+      else resolve(stdout.trim());
     });
   });
+}
+
+// Helper: paginate through all reviews for a PR
+async function getAllReviews(owner, repo, prNumber) {
+  let page = 1;
+  let allReviews = [];
+
+  while (true) {
+    const stdout = await execPromise(
+      `gh api "repos/${owner}/${repo}/pulls/${prNumber}/reviews?per_page=100&page=${page}"`
+    );
+    const pageReviews = JSON.parse(stdout || '[]');
+    if (pageReviews.length === 0) break;
+    allReviews = allReviews.concat(pageReviews);
+    if (pageReviews.length < 100) break;
+    page++;
+  }
+
+  return allReviews;
+}
+
+// Helper: find last commit before a date
+async function findLastCommitBefore(owner, repo, prNumber, targetDate) {
+  let page = 1;
+
+  while (true) {
+    const stdout = await execPromise(
+      `gh api "repos/${owner}/${repo}/pulls/${prNumber}/commits?per_page=100&page=${page}"`
+    );
+    const commits = JSON.parse(stdout || '[]');
+    if (commits.length === 0) break;
+
+    // Find last commit with date <= targetDate
+    let lastBefore = null;
+    for (const commit of commits) {
+      if (commit.commit.committer.date <= targetDate) {
+        lastBefore = commit.sha;
+      }
+    }
+
+    // If all commits are after target date, we've gone too far
+    if (commits[0].commit.committer.date > targetDate) {
+      break;
+    }
+
+    // If the last commit in this page is after target date, we found our boundary
+    if (commits[commits.length - 1].commit.committer.date > targetDate && lastBefore) {
+      return lastBefore;
+    }
+
+    if (commits.length < 100) break;
+    page++;
+  }
+
+  return null;
+}
+
+// Generate diff for a PR — supports full diff or since-last-review
+async function generateDiff(prNumber) {
+  const repoPath = path.join(app.getPath('home'), 'Website-Toolbox');
+  const owner = appConfig.repoOwner || 'webtoolbox';
+  const repo = appConfig.repoName || 'Website-Toolbox';
+  const diffMode = (appConfig.diff || {}).mode || 'since-review';
+
+  // Get HEAD SHA
+  const headSha = await execPromise(
+    `gh pr view ${prNumber} --repo ${owner}/${repo} --json headRefOid --jq '.headRefOid'`
+  );
+
+  if (!headSha) {
+    throw new Error('Could not get PR HEAD SHA');
+  }
+
+  let baseSha = null;
+  let reviewInfo = null;
+
+  if (diffMode === 'since-review') {
+    // Find the most recent non-COMMENTED review
+    const allReviews = await getAllReviews(owner, repo, prNumber);
+    const reviews = allReviews
+      .filter(r => r.user.login === owner && r.submitted_at && r.state !== 'COMMENTED')
+      .sort((a, b) => new Date(b.submitted_at) - new Date(a.submitted_at));
+
+    if (reviews.length > 0) {
+      const review = reviews[0];
+
+      if (review.state === 'DISMISSED') {
+        // For dismissed reviews, use commit_id directly
+        baseSha = review.commit_id;
+        reviewInfo = { date: review.submitted_at, state: review.state };
+      } else {
+        // For non-dismissed reviews, verify commit_id is not mutated
+        const commitDate = await execPromise(
+          `gh api "repos/${owner}/${repo}/commits/${review.commit_id}" --jq '.commit.committer.date'`
+        );
+
+        if (commitDate > review.submitted_at) {
+          // Commit date is after review date — commit_id was mutated
+          const actualCommit = await findLastCommitBefore(owner, repo, prNumber, review.submitted_at);
+          if (actualCommit) {
+            baseSha = actualCommit;
+            reviewInfo = { date: review.submitted_at, state: review.state, commitMutated: true };
+          } else {
+            baseSha = review.commit_id;
+            reviewInfo = { date: review.submitted_at, state: review.state };
+          }
+        } else {
+          baseSha = review.commit_id;
+          reviewInfo = { date: review.submitted_at, state: review.state };
+        }
+      }
+    }
+  }
+
+  // If no review found or mode is 'full', use base..head diff
+  if (!baseSha) {
+    const baseShaFromApi = await execPromise(
+      `gh api repos/${owner}/${repo}/pulls/${prNumber} --jq '.base.sha'`
+    );
+    baseSha = baseShaFromApi;
+    reviewInfo = null;
+  }
+
+  if (baseSha === headSha) {
+    throw new Error('No new commits since last review');
+  }
+
+  // Get files changed by non-merge commits since the review
+  let files = '';
+  try {
+    files = await execPromise(
+      `git log pr-${prNumber} --no-merges --diff-filter=ACMRT --name-only --pretty=format:"" ${baseSha}..${headSha}`,
+      { cwd: repoPath }
+    );
+  } catch {
+    // Fallback: try without pr- branch name
+    files = await execPromise(
+      `git log --no-merges --diff-filter=ACMRT --name-only --pretty=format:"" ${baseSha}..${headSha}`,
+      { cwd: repoPath }
+    );
+  }
+
+  // Filter to code files only
+  const codeFiles = files
+    .split('\n')
+    .map(f => f.trim())
+    .filter(f => f && /\.(pm|cgi|js|tpl|css|less|json)$/.test(f))
+    .filter((f, i, arr) => arr.indexOf(f) === i); // unique
+
+  if (codeFiles.length === 0) {
+    throw new Error('No code files changed since last review');
+  }
+
+  // Fetch origin/master for three-dot diff
+  try {
+    await execPromise('git fetch origin master', { cwd: repoPath });
+  } catch {
+    // Ignore fetch errors (might already be up to date)
+  }
+
+  // Use three-dot diff against master to exclude merge noise
+  const diffOut = await execPromise(
+    `git diff origin/master...${headSha} -- ${codeFiles.map(f => `"${f}"`).join(' ')}`,
+    { cwd: repoPath }
+  );
+
+  const tmpPath = path.join(getGeneratedDir(), `pr-${prNumber}-clean.diff`);
+  fs.writeFileSync(tmpPath, diffOut);
+
+  return { diffPath: tmpPath, baseSha, headSha, reviewInfo, filesChanged: codeFiles.length };
 }
 
 // Create application menu with "New Window" option
@@ -477,10 +635,10 @@ ipcMain.handle('save-image', async (event, { reviewDir, imageDataUrl, fileName }
 // Open PR in a new window
 ipcMain.handle('open-pr-new-window', async (event, prNumber) => {
   try {
-    const { diffPath } = await generateDiff(prNumber);
-    const content = fs.readFileSync(diffPath, 'utf8');
+    const result = await generateDiff(prNumber);
+    const content = fs.readFileSync(result.diffPath, 'utf8');
     const fileName = `pr-${prNumber}-clean.diff`;
-    createWindow({ diffContent: content, fileName, filePath: diffPath });
+    createWindow({ diffContent: content, fileName, filePath: result.diffPath, prNumber });
     return { success: true };
   } catch (err) {
     console.error('[pr-new-window] failed:', err.message);
@@ -490,10 +648,17 @@ ipcMain.handle('open-pr-new-window', async (event, prNumber) => {
 
 ipcMain.handle('load-pr', async (event, prNumber) => {
   try {
-    const { diffPath } = await generateDiff(prNumber);
-    const content = fs.readFileSync(diffPath, 'utf8');
+    const result = await generateDiff(prNumber);
+    const content = fs.readFileSync(result.diffPath, 'utf8');
     const fileName = `pr-${prNumber}-clean.diff`;
-    return { content, fileName, filePath: diffPath, prNumber };
+    return {
+      content,
+      fileName,
+      filePath: result.diffPath,
+      prNumber,
+      reviewInfo: result.reviewInfo,
+      filesChanged: result.filesChanged
+    };
   } catch (err) {
     console.error('[pr] load failed:', err.message);
     return { error: err.message };

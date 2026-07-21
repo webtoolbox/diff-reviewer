@@ -1003,6 +1003,24 @@ async function loadPrByNumber(prNumber) {
     }
     currentFileName = result.fileName || `pr-${prNumber}.diff`;
     loadDiff(result.content, result.filePath);
+
+    // Update info bar with review info
+    let infoHtml = `<strong>PR #${prNumber}</strong>`;
+    if (result.reviewInfo) {
+      const date = new Date(result.reviewInfo.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const state = result.reviewInfo.state.toLowerCase().replace('_', ' ');
+      infoHtml += ` — changes since ${date} (${state})`;
+      if (result.reviewInfo.commitMutated) {
+        infoHtml += ' *';
+      }
+    } else {
+      infoHtml += ' — full diff';
+    }
+    if (result.filesChanged) {
+      infoHtml += ` — ${result.filesChanged} file${result.filesChanged !== 1 ? 's' : ''}`;
+    }
+    prInfo.innerHTML = infoHtml;
+
     // Update title bar
     document.title = `Diff Reviewer — PR #${prNumber}`;
     // Store PR number

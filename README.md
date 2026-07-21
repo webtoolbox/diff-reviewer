@@ -95,6 +95,11 @@ Private config overrides public config. Your private config should NOT be commit
   },
   "repoOwner": "",
   "repoName": "",
+  "diff": {
+    "mode": "since-review",
+    "excludeMerges": true,
+    "codeFileExtensions": [".pm", ".cgi", ".js", ".tpl", ".css", ".less", ".json"]
+  },
   "imageUpload": {
     "enabled": false,
     "provider": "s3",
@@ -112,6 +117,22 @@ Private config overrides public config. Your private config should NOT be commit
 }
 ```
 
+### Diff Modes
+
+The `diff.mode` config controls how diffs are generated when loading a PR:
+
+- **`since-review`** (default): Shows only changes since the last non-COMMENTED review by the repo owner. Handles dismissed reviews and commit_id mutation. Excludes merge commits. Falls back to full diff if no prior review exists.
+- **`full`**: Shows all changes from the PR's base branch to HEAD.
+
+When `since-review` mode is active:
+- Paginates through all reviews to find the most recent non-COMMENTED review
+- For dismissed reviews, uses commit_id directly (matches GitHub's behavior)
+- For non-dismissed reviews, verifies commit_id isn't mutated (commit date > review date)
+- If mutated, finds the actual reviewed commit by paginating through commits
+- Uses three-dot diff against master to exclude merge noise
+- Only includes files changed by authored (non-merge) commits
+- Filters to code files only (configurable via `codeFileExtensions`)
+
 ### Example Private Config (for Website Toolbox)
 
 ```json
@@ -121,6 +142,11 @@ Private config overrides public config. Your private config should NOT be commit
   "prFilter": {
     "reviewRequested": true,
     "titleContains": "for review"
+  },
+  "diff": {
+    "mode": "since-review",
+    "excludeMerges": true,
+    "codeFileExtensions": [".pm", ".cgi", ".js", ".tpl", ".css", ".less", ".json"]
   },
   "imageUpload": {
     "enabled": true,
