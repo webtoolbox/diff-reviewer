@@ -17,7 +17,7 @@ function loadConfig() {
     aiSendArgs: ['send', '--to'],
     aiChatId: null,
     aiTagPrefix: '@Hermes',
-    reviewSaveDir: '~/.hermes/profiles/wt/diff-reviews/pending',
+    reviewSaveDir: '',  // Will default to app userData/reviews
     prFilter: { reviewRequested: true, titleContains: '' },
     repoOwner: '',
     repoName: '',
@@ -75,7 +75,13 @@ const positionalArgs = rawArgs.filter((_, i) => {
 
 function sendAiMessage(message) {
   if (!aiChatId) {
-    console.error('[ai] No chat-id configured, cannot send message');
+    // No chat-id specified — send without --to (creates new session)
+    console.log('[ai] No chat-id configured, sending to new session');
+    const args = [appConfig.aiSendArgs[0], message]; // Just "send" without "--to"
+    execFile(appConfig.aiCommand, args, (err) => {
+      if (err) console.error(`[${appConfig.aiCommand}] send failed:`, err.message);
+      else console.log(`[${appConfig.aiCommand}] message sent to new session`);
+    });
     return;
   }
   const args = [...appConfig.aiSendArgs, aiChatId, message];
@@ -92,10 +98,37 @@ function expandPath(p) {
   return p;
 }
 
+// Get the app's data directory for reviews, drafts, images, etc.
+function getAppDataDir() {
+  return app.getPath('userData');
+}
+
+function getReviewDir() {
+  const configured = appConfig.reviewSaveDir;
+  if (configured) {
+    return expandPath(configured);
+  }
+  // Default to app's userData/reviews
+  const dir = path.join(getAppDataDir(), 'reviews');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function getDraftsDir() {
+  const dir = path.join(getAppDataDir(), 'drafts');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function getGeneratedDir() {
+  const dir = path.join(getAppDataDir(), 'generated');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 // Draft management
 function getDraftPath(diffFilePath) {
-  const draftDir = expandPath(path.join(appConfig.reviewSaveDir, '..', 'drafts'));
-  fs.mkdirSync(draftDir, { recursive: true });
+  const draftDir = getDraftsDir();
   const crypto = require('crypto');
   const hash = crypto.createHash('md5').update(diffFilePath || 'unsaved').digest('hex').slice(0, 12);
   return path.join(draftDir, `draft-${hash}.json`);
@@ -144,7 +177,7 @@ function uploadImageToS3(imageDataUrl, fileName) {
       return reject(new Error('S3 image upload not configured'));
     }
 
-    const tmpPath = path.join(app.getPath('temp'), fileName);
+    const tmpPath = path.join(getGeneratedDir(), fileName);
     const base64 = imageDataUrl.replace(/^data:image\/\w+;base64,/, '');
     fs.writeFileSync(tmpPath, Buffer.from(base64, 'base64'));
 
@@ -187,7 +220,7 @@ function generateDiff(prNumber) {
       const cmd = `git diff ${baseSha}..${headSha} -- '*.pm' '*.cgi' '*.js' '*.tpl' '*.css' '*.less' '*.json'`;
       exec(cmd, { cwd: repoPath, maxBuffer: 10 * 1024 * 1024 }, (err2, diffOut) => {
         if (err2) return reject(new Error(`Failed to generate diff: ${err2.message}`));
-        const tmpPath = path.join(app.getPath('temp'), `pr-${prNumber}-clean.diff`);
+        const tmpPath = path.join(getGeneratedDir(), `pr-${prNumber}-clean.diff`);
         fs.writeFileSync(tmpPath, diffOut);
         resolve({ diffPath: tmpPath, baseSha, headSha });
       });
@@ -366,7 +399,7 @@ ipcMain.handle('delete-draft', async (event, filePath) => { deleteDraft(filePath
 
 ipcMain.handle('save-image', async (event, { reviewDir, imageDataUrl, fileName }) => {
   try {
-    const dir = expandPath(reviewDir || appConfig.reviewSaveDir);
+    const dir = reviewDir || getReviewDir();
     const imagesDir = path.join(dir, 'images');
     fs.mkdirSync(imagesDir, { recursive: true });
     const base64 = imageDataUrl.replace(/^data:image\/\w+;base64,/, '');
@@ -484,7 +517,7 @@ ipcMain.handle('save-review', async (event, review) => {
   }
 
   const reviewToSave = { ...review, comments: prComments };
-  const reviewDir = expandPath(appConfig.reviewSaveDir);
+  const reviewDir = getReviewDir();
   fs.mkdirSync(reviewDir, { recursive: true });
   const filename = `review-${Date.now()}.json`;
   const outputPath = path.join(reviewDir, filename);

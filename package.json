@@ -21,7 +21,7 @@
   "license": "MIT",
   "devDependencies": {
     "electron": "^37.2.6",
-    "electron-builder": "^26.0.12"
+    "electron-builder": "^26.15.3"
   },
   "dependencies": {
     "diff2html": "^3.4.52"
@@ -39,7 +39,7 @@
     "productName": "Diff Reviewer",
     "mac": {
       "category": "public.app-category.developer-tools",
-      "icon": null,
+      "icon": "icon.png",
       "fileAssociations": [
         {
           "ext": "diff",
