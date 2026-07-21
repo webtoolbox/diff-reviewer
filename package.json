@@ -1,11 +1,13 @@
 {
   "name": "diff-reviewer",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, file-level comments, and AI agent integration.",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "test": "electron test.js"
+    "test": "electron test.js",
+    "build": "electron-builder --mac",
+    "build:dir": "electron-builder --mac --dir"
   },
   "keywords": [
     "code-review",
@@ -18,7 +20,8 @@
   "author": "",
   "license": "MIT",
   "devDependencies": {
-    "electron": "^37.2.6"
+    "electron": "^37.2.6",
+    "electron-builder": "^26.0.12"
   },
   "dependencies": {
     "diff2html": "^3.4.52"
@@ -30,5 +33,41 @@
   "bugs": {
     "url": "https://github.com/webtoolbox/diff-reviewer/issues"
   },
-  "homepage": "https://github.com/webtoolbox/diff-reviewer#readme"
+  "homepage": "https://github.com/webtoolbox/diff-reviewer#readme",
+  "build": {
+    "appId": "com.webtoolbox.diff-reviewer",
+    "productName": "Diff Reviewer",
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "icon": null,
+      "fileAssociations": [
+        {
+          "ext": "diff",
+          "name": "Diff File",
+          "mimeType": "text/x-diff",
+          "role": "Viewer"
+        },
+        {
+          "ext": "patch",
+          "name": "Patch File",
+          "mimeType": "text/x-patch",
+          "role": "Viewer"
+        }
+      ]
+    },
+    "fileAssociations": [
+      {
+        "ext": "diff",
+        "name": "Diff File",
+        "mimeType": "text/x-diff",
+        "role": "Viewer"
+      },
+      {
+        "ext": "patch",
+        "name": "Patch File",
+        "mimeType": "text/x-patch",
+        "role": "Viewer"
+      }
+    ]
+  }
 }

@@ -1,9 +1,11 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { execFile, exec } = require('child_process');
 
-let mainWindow;
+// Track all open windows
+const windows = new Map();
+let windowCounter = 0;
 
 // Load config: private (~/.config/diff-reviewer/config.json) overrides public (./config.json)
 function loadConfig() {
@@ -32,7 +34,6 @@ function loadConfig() {
 
   let config = { ...defaults };
 
-  // Load public config
   try {
     const raw = fs.readFileSync(publicConfigPath, 'utf8');
     const parsed = JSON.parse(raw);
@@ -41,7 +42,6 @@ function loadConfig() {
     if (parsed.prFilter) config.prFilter = { ...config.prFilter, ...parsed.prFilter };
   } catch {}
 
-  // Load private config (overrides public)
   try {
     const raw = fs.readFileSync(privateConfigPath, 'utf8');
     const parsed = JSON.parse(raw);
@@ -55,7 +55,7 @@ function loadConfig() {
 
 const appConfig = loadConfig();
 
-// Parse --chat-id and --pr-number from command line args
+// Parse CLI args
 let aiChatId = appConfig.aiChatId;
 let cliPrNumber = null;
 const rawArgs = process.argv.slice(2);
@@ -73,7 +73,6 @@ const positionalArgs = rawArgs.filter((_, i) => {
     && prev !== '--chat-id' && prev !== '--pr-number';
 });
 
-// Send a message to the AI agent via CLI
 function sendAiMessage(message) {
   if (!aiChatId) {
     console.error('[ai] No chat-id configured, cannot send message');
@@ -137,7 +136,7 @@ function deleteDraft(diffFilePath) {
   }
 }
 
-// Upload image to S3 and return public URL
+// S3 upload
 function uploadImageToS3(imageDataUrl, fileName) {
   return new Promise((resolve, reject) => {
     const upload = appConfig.imageUpload || {};
@@ -145,7 +144,6 @@ function uploadImageToS3(imageDataUrl, fileName) {
       return reject(new Error('S3 image upload not configured'));
     }
 
-    // Write temp file
     const tmpPath = path.join(app.getPath('temp'), fileName);
     const base64 = imageDataUrl.replace(/^data:image\/\w+;base64,/, '');
     fs.writeFileSync(tmpPath, Buffer.from(base64, 'base64'));
@@ -159,8 +157,7 @@ function uploadImageToS3(imageDataUrl, fileName) {
 
     const cmd = `aws --profile ${profile} --region ${region} s3 cp "${tmpPath}" "s3://${bucket}/${s3Key}" --acl ${acl}`;
 
-    exec(cmd, { timeout: 30000 }, (err, stdout, stderr) => {
-      // Clean up temp file
+    exec(cmd, { timeout: 30000 }, (err) => {
       try { fs.unlinkSync(tmpPath); } catch {}
 
       if (err) {
@@ -168,7 +165,6 @@ function uploadImageToS3(imageDataUrl, fileName) {
         return reject(new Error(`S3 upload failed: ${err.message}`));
       }
 
-      // Construct public URL
       const url = `https://${bucket}.s3.amazonaws.com/${encodeURIComponent(fileName)}`;
       console.log('[s3] uploaded:', url);
       resolve(url);
@@ -199,8 +195,91 @@ function generateDiff(prNumber) {
   });
 }
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
+// Create application menu with "New Window" option
+function createMenu() {
+  const template = [
+    {
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    },
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'New Window',
+          accelerator: 'CmdOrCtrl+N',
+          click: () => createWindow()
+        },
+        {
+          label: 'Open Diff...',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => {
+            const focused = BrowserWindow.getFocusedWindow();
+            if (focused) focused.webContents.send('trigger-open-file');
+          }
+        },
+        { type: 'separator' },
+        { role: 'close' }
+      ]
+    },
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' }
+      ]
+    },
+    {
+      label: 'View',
+      submenu: [
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        { type: 'separator' },
+        { role: 'front' },
+        { type: 'separator' },
+        { role: 'window' }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+}
+
+// Create a new window
+function createWindow(options = {}) {
+  const windowId = ++windowCounter;
+
+  const win = new BrowserWindow({
     width: 1400,
     height: 900,
     title: 'Diff Reviewer',
@@ -211,27 +290,64 @@ function createWindow() {
     }
   });
 
-  mainWindow.loadFile('index.html');
+  windows.set(windowId, win);
 
-  if (positionalArgs[0] && fs.existsSync(positionalArgs[0])) {
-    mainWindow.webContents.on('did-finish-load', () => {
-      const diffContent = fs.readFileSync(positionalArgs[0], 'utf8');
-      const fileName = path.basename(positionalArgs[0]);
-      const filePath = path.resolve(positionalArgs[0]);
-      mainWindow.webContents.send('load-diff', { content: diffContent, fileName, filePath });
-    });
-  }
+  win.loadFile('index.html');
+
+  win.webContents.on('did-finish-load', () => {
+    // Load file from options or CLI args
+    if (options.filePath && fs.existsSync(options.filePath)) {
+      const diffContent = fs.readFileSync(options.filePath, 'utf8');
+      const fileName = path.basename(options.filePath);
+      win.webContents.send('load-diff', { content: diffContent, fileName, filePath: path.resolve(options.filePath) });
+    } else if (options.diffContent) {
+      win.webContents.send('load-diff', { content: options.diffContent, fileName: options.fileName || '', filePath: options.filePath || '' });
+    }
+  });
+
+  win.on('closed', () => {
+    windows.delete(windowId);
+  });
+
+  return win;
 }
 
-app.whenReady().then(createWindow);
+// App lifecycle
+app.whenReady().then(() => {
+  createMenu();
+
+  // Create initial window with CLI args
+  const firstWindowOptions = {};
+  if (positionalArgs[0] && fs.existsSync(positionalArgs[0])) {
+    firstWindowOptions.filePath = positionalArgs[0];
+  }
+  createWindow(firstWindowOptions);
+});
+
+// macOS: handle file open via double-click or drag onto app icon
+let pendingOpenFile = null;
+
+app.on('open-file', (event, filePath) => {
+  event.preventDefault();
+  if (windows.size > 0) {
+    const win = Array.from(windows.values())[0];
+    const content = fs.readFileSync(filePath, 'utf8');
+    const fileName = path.basename(filePath);
+    win.webContents.send('load-diff', { content, fileName, filePath: path.resolve(filePath) });
+  } else {
+    pendingOpenFile = filePath;
+  }
+});
 
 app.on('window-all-closed', () => {
   app.quit();
 });
 
-// File open dialog
-ipcMain.handle('open-file', async () => {
-  const result = await dialog.showOpenDialog(mainWindow, {
+// IPC handlers
+
+ipcMain.handle('open-file', async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showOpenDialog(win, {
     properties: ['openFile'],
     filters: [{ name: 'Diff Files', extensions: ['diff', 'patch'] }]
   });
@@ -244,14 +360,11 @@ ipcMain.handle('open-file', async () => {
   return null;
 });
 
-// Draft IPC
 ipcMain.handle('save-draft', async (event, { filePath, draft }) => saveDraft(filePath, draft));
 ipcMain.handle('load-draft', async (event, filePath) => loadDraft(filePath));
 ipcMain.handle('delete-draft', async (event, filePath) => { deleteDraft(filePath); return true; });
 
-// Image save (local file + optional S3 upload)
 ipcMain.handle('save-image', async (event, { reviewDir, imageDataUrl, fileName }) => {
-  // Always save locally
   try {
     const dir = expandPath(reviewDir || appConfig.reviewSaveDir);
     const imagesDir = path.join(dir, 'images');
@@ -264,7 +377,6 @@ ipcMain.handle('save-image', async (event, { reviewDir, imageDataUrl, fileName }
     console.error('[image] local save failed:', err.message);
   }
 
-  // Upload to S3 if configured
   const upload = appConfig.imageUpload || {};
   if (upload.enabled && upload.s3Bucket) {
     try {
@@ -279,7 +391,20 @@ ipcMain.handle('save-image', async (event, { reviewDir, imageDataUrl, fileName }
   return { localPath: `images/${fileName}`, url: null };
 });
 
-// Load PR diff
+// Open PR in a new window
+ipcMain.handle('open-pr-new-window', async (event, prNumber) => {
+  try {
+    const { diffPath } = await generateDiff(prNumber);
+    const content = fs.readFileSync(diffPath, 'utf8');
+    const fileName = `pr-${prNumber}-clean.diff`;
+    createWindow({ diffContent: content, fileName, filePath: diffPath });
+    return { success: true };
+  } catch (err) {
+    console.error('[pr-new-window] failed:', err.message);
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('load-pr', async (event, prNumber) => {
   try {
     const { diffPath } = await generateDiff(prNumber);
@@ -292,7 +417,6 @@ ipcMain.handle('load-pr', async (event, prNumber) => {
   }
 });
 
-// List open PRs with filtering
 ipcMain.handle('list-prs', async () => {
   const owner = appConfig.repoOwner;
   const repo = appConfig.repoName;
@@ -334,7 +458,6 @@ ipcMain.handle('list-prs', async () => {
   });
 });
 
-// Final review submit
 ipcMain.handle('save-review', async (event, review) => {
   const aiTag = (appConfig.aiTagPrefix || '@Hermes').toLowerCase();
   const aiComments = [];
@@ -380,9 +503,9 @@ ipcMain.handle('save-review', async (event, review) => {
   return outputPath;
 });
 
-// Export markdown
 ipcMain.handle('export-markdown', async (event, { markdown, defaultName }) => {
-  const result = await dialog.showSaveDialog(mainWindow, {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showSaveDialog(win, {
     title: 'Export Review as Markdown',
     defaultPath: defaultName || 'review.md',
     filters: [{ name: 'Markdown', extensions: ['md'] }]
@@ -394,7 +517,6 @@ ipcMain.handle('export-markdown', async (event, { markdown, defaultName }) => {
   return null;
 });
 
-// Config
 ipcMain.handle('get-config', async () => ({
   chatId: aiChatId,
   prNumber: cliPrNumber,

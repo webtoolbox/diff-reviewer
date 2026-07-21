@@ -1028,6 +1028,12 @@ function closePrDropdown() {
 }
 
 async function openPrDropdown() {
+  // Position dropdown directly under the ▾ button
+  const btnRect = btnPrList.getBoundingClientRect();
+  prDropdown.style.top = (btnRect.bottom + 4) + 'px';
+  prDropdown.style.right = (window.innerWidth - btnRect.right) + 'px';
+  prDropdown.style.left = 'auto';
+
   prDropdown.classList.add('open');
   prDropdownOpen = true;
   prDropdown.innerHTML = '<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-loading">Loading...</div>';
@@ -1047,27 +1053,48 @@ async function openPrDropdown() {
   let html = `<div class="pr-dropdown-header">Pull Requests Pending Review (${prs.length})</div>`;
   for (const pr of prs) {
     const date = new Date(pr.created).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    const reviewers = (pr.reviewers || []).filter(r => r !== pr.author).join(', ');
     const draft = pr.draft ? '<span class="pr-draft">DRAFT</span>' : '';
     html += `
       <div class="pr-item" data-pr="${pr.number}">
-        <div class="pr-title">${escapeHtml(pr.title)}${draft}</div>
-        <div class="pr-meta">
-          <span class="pr-number">#${pr.number}</span>
-          <span class="pr-author"> by ${escapeHtml(pr.author)}</span>
-          <span> · ${date}</span>
-          ${reviewers ? `<span class="pr-reviewers"> · reviewers: ${escapeHtml(reviewers)}</span>` : ''}
+        <div class="pr-item-content">
+          <div class="pr-title">${escapeHtml(pr.title)}${draft}</div>
+          <div class="pr-meta">
+            <span class="pr-number">#${pr.number}</span>
+            <span class="pr-author"> by ${escapeHtml(pr.author)}</span>
+            <span> · ${date}</span>
+          </div>
         </div>
+        <button class="pr-new-window-btn" data-pr="${pr.number}" title="Open in new window">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
+          </svg>
+        </button>
       </div>`;
   }
   prDropdown.innerHTML = html;
 
   // Wire up click handlers
-  prDropdown.querySelectorAll('.pr-item').forEach(item => {
-    item.addEventListener('click', async () => {
-      const num = parseInt(item.dataset.pr, 10);
+  prDropdown.querySelectorAll('.pr-item-content').forEach(content => {
+    content.addEventListener('click', async () => {
+      const num = parseInt(content.closest('.pr-item').dataset.pr, 10);
       closePrDropdown();
       await loadPrByNumber(num);
+    });
+  });
+
+  // Wire up new window buttons
+  prDropdown.querySelectorAll('.pr-new-window-btn').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const num = parseInt(btn.dataset.pr, 10);
+      closePrDropdown();
+      prInfo.innerHTML = `<strong>Loading PR #${num} in new window...</strong>`;
+      const result = await window.electronAPI.openPrNewWindow(num);
+      if (result.error) {
+        prInfo.innerHTML = `<strong style="color:#f85149">Error:</strong> ${result.error}`;
+      } else {
+        prInfo.textContent = 'No diff loaded';
+      }
     });
   });
 }
@@ -1077,4 +1104,9 @@ document.addEventListener('click', (e) => {
   if (prDropdownOpen && !prDropdown.contains(e.target) && e.target !== btnPrList) {
     closePrDropdown();
   }
+});
+
+// Handle menu "Open Diff" trigger
+window.electronAPI.onTriggerOpenFile(() => {
+  btnOpen.click();
 });

@@ -11,5 +11,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveImage: (data) => ipcRenderer.invoke('save-image', data),
   loadPr: (prNumber) => ipcRenderer.invoke('load-pr', prNumber),
   listPrs: () => ipcRenderer.invoke('list-prs'),
-  onLoadDiff: (callback) => ipcRenderer.on('load-diff', (event, data) => callback(data))
+  openPrNewWindow: (prNumber) => ipcRenderer.invoke('open-pr-new-window', prNumber),
+  onLoadDiff: (callback) => ipcRenderer.on('load-diff', (event, data) => callback(data)),
+  onTriggerOpenFile: (callback) => ipcRenderer.on('trigger-open-file', () => callback())
 });
