@@ -13,7 +13,7 @@
   "diff": {
     "mode": "since-review",
     "excludeMerges": true,
-    "codeFileExtensions": [".pm", ".cgi", ".js", ".jsx", ".ts", ".tsx", ".tpl", ".css", ".scss", ".less", ".json", ".html", ".py", ".rb", ".go", ".java", ".c", ".cpp", ".h", ".hpp", ".sh", ".bash", ".sql", ".yaml", ".yml", ".toml", ".xml", ".md", ".txt"]
+    "codeFileExtensions": []
   },
   "imageUpload": {
     "enabled": false,

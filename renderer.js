@@ -1160,7 +1160,10 @@ const ALL_EXTENSIONS = [
 async function initFileFilter() {
   const config = await window.electronAPI.getConfig();
   const diffConfig = config.diff || {};
-  activeExtensions = diffConfig.codeFileExtensions || ALL_EXTENSIONS;
+  const configExtensions = diffConfig.codeFileExtensions;
+  // If config is blank/empty array, all extensions are active (show all)
+  // If config has specific extensions, only those are active
+  activeExtensions = (configExtensions && configExtensions.length > 0) ? configExtensions : null;
 }
 
 initFileFilter();
@@ -1206,18 +1209,18 @@ function openFileFilterDropdown() {
   fileFilterDropdown.classList.add('open');
   fileFilterOpen = true;
 
-  // Build checkbox list from extensions found in diff
-  const extensionsToShow = allExtensionsInDiff.length > 0 ? allExtensionsInDiff : ALL_EXTENSIONS;
+  // Only show extensions that exist in the current diff
+  const extensionsToShow = allExtensionsInDiff.length > 0 ? allExtensionsInDiff : [];
 
   let html = '';
   for (const ext of extensionsToShow) {
-    const checked = activeExtensions.includes(ext) ? 'checked' : '';
-    const count = allExtensionsInDiff.includes(ext) ? getFileCountForExtension(ext) : '';
+    // If activeExtensions is null (blank config), check all
+    // If activeExtensions is an array, only check those in the array
+    const checked = (activeExtensions === null || activeExtensions.includes(ext)) ? 'checked' : '';
     html += `
       <div class="filter-item">
         <input type="checkbox" id="ext-${ext}" value="${ext}" ${checked}>
         <label for="ext-${ext}">${ext}</label>
-        ${count ? `<span style="font-size:11px;color:#8b949e">${count}</span>` : ''}
       </div>`;
   }
   filterList.innerHTML = html;
@@ -1226,16 +1229,10 @@ function openFileFilterDropdown() {
   updateFilterButtonState();
 }
 
-// Get file count for an extension in current diff
-function getFileCountForExtension(ext) {
-  // This would need to be tracked when diff is loaded
-  // For now, just show a checkmark if it's in the active list
-  return '';
-}
-
 // Update filter button appearance
 function updateFilterButtonState() {
-  const isFiltered = activeExtensions.length < ALL_EXTENSIONS.length;
+  // null means show all (blank config), array means filtered
+  const isFiltered = activeExtensions !== null;
   btnFileFilter.classList.toggle('active', isFiltered);
 }
 
@@ -1259,7 +1256,9 @@ filterApply.addEventListener('click', () => {
   filterList.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
     selected.push(cb.value);
   });
-  activeExtensions = selected;
+  // If all extensions in the diff are selected, set to null (show all)
+  const allChecked = selected.length === allExtensionsInDiff.length;
+  activeExtensions = allChecked ? null : selected;
   updateFilterButtonState();
   closeFileFilterDropdown();
 
