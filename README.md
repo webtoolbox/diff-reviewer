@@ -1,6 +1,6 @@
 # Diff Reviewer
 
-A macOS desktop app that speeds up GitHub PR reviews by loading diffs immediately, pre-filtering files by type, excluding merge commits, and auto-loading the next PR when you're done. Includes desktop AI agent integration for tagging an agent (or any other agent) directly in review comments and automated agent rule proposals based on your feedback.
+A desktop app that speeds up GitHub PR reviews by loading diffs immediately, pre-filtering files by type, excluding merge commits, and auto-loading the next PR when you're done. Includes desktop AI agent integration for tagging an agent (or any other agent) directly in review comments and automated agent rule proposals based on your feedback. Runs on macOS and Linux.
 
 ![Main Diff View](screenshots/main-diff-view.jpg)
 
@@ -80,12 +80,14 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 - **New windows** (Cmd+N) — open multiple PRs in separate windows simultaneously
 - **File association** — .diff and .patch files open with Diff Reviewer
 
-### macOS Integration
-- **.app bundle** — install to /Applications like any native app
-- **Dock icon** with custom diff-style icon
+### Platform Integration
+- **macOS**: .app bundle, dock icon, file associations for .diff/.patch
+- **Linux**: Run from source or build .deb/.rpm/.AppImage
 
 ### Data Management
-- **Persistent storage** — all data in `~/Library/Application Support/diff-reviewer/`
+- **Persistent storage** — all data stored locally:
+  - macOS: `~/Library/Application Support/diff-reviewer/`
+  - Linux: `~/.config/diff-reviewer/`
   - `reviews/` — submitted review JSONs
   - `drafts/` — auto-saved comment drafts
   - `generated/` — generated PR diff files
