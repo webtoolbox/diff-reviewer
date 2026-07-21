@@ -1,6 +1,6 @@
 # Diff Reviewer
 
-A macOS desktop app that speeds up GitHub PR reviews by loading diffs immediately, pre-filtering files by type, excluding merge commits, and auto-loading the next PR when you're done. Includes desktop AI agent integration for tagging an agent directly in review comments and automated agent rule proposals based on your feedback.
+A macOS desktop app that speeds up GitHub PR reviews by loading diffs immediately, pre-filtering files by type, excluding merge commits, and auto-loading the next PR when you're done. Includes desktop AI agent integration for tagging an agent (or any other agent) directly in review comments and automated agent rule proposals based on your feedback.
 
 ![Main Diff View](screenshots/main-diff-view.jpg)
 
@@ -14,7 +14,7 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 
 **Line-level commit attribution**: Hover over any line to see exactly which commit changed it and why. This makes it easy to trace the history of a specific change without digging through git blame.
 
-**Desktop AI agent integration**: Tag @Hermes in any comment to message a desktop AI agent directly from the review. The agent can help with code analysis, answer questions, or assist with changes.
+**Desktop AI agent integration**: Tag @Hermes (or any other agent) in any comment to message a desktop AI agent directly from the review. The agent can help with code analysis, answer questions, or assist with changes.
 
 **Automated agent rule proposals**: After submitting a review, the app can analyze your feedback against the repo's AGENTS.md rules and propose new rules when needed. This replaces a workflow that was previously done manually — reviewing feedback, identifying gaps in agent rules, and updating the rule files.
 
@@ -68,7 +68,7 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 
 - **Image support** — paste (Cmd+V) or drag-and-drop images into comments
 - **S3 upload** — images uploaded to S3 for inline GitHub markdown
-- **Desktop AI agent integration** — tag @Hermes in comments to message a desktop AI agent
+- **Desktop AI agent integration** — tag @Hermes (or any other agent) in comments to message a desktop AI agent
 
 ### Agent Rules
 - **Rules proposal** — after submitting a review, AI analyzes feedback against AGENTS.md and proposes new rules
