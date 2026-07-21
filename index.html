@@ -377,12 +377,16 @@
     .line-number-hover { background: #1c2128; cursor: help; }
 
     /* PR description toggle */
-    .pr-desc-toggle {
-      color: #484f58; cursor: pointer; font-size: 14px; margin-left: 6px;
-      transition: color 0.15s;
-      position: relative; top: -1px;
+    .pr-title-text {
+      cursor: pointer; transition: color 0.15s;
     }
-    .pr-desc-toggle:hover { color: #8b949e; }
+    .pr-title-text:hover { text-decoration: underline; }
+    .pr-desc-toggle {
+      color: #c9d1d9; cursor: pointer; margin-left: 4px;
+      transition: color 0.15s; display: inline-flex; align-items: center;
+      position: relative; top: 2px;
+    }
+    .pr-desc-toggle:hover { color: #58a6ff; }
     .pr-desc-toggle.open { color: #58a6ff; }
 
     /* PR description dropdown */

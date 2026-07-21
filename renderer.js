@@ -1560,7 +1560,7 @@ function updatePrInfoBar(prNumber, prTitle, result) {
   // Title line + author/assignees line
   let html = '';
   if (prTitle) {
-    html += `<div class="pr-title-line"><strong>${escapeHtml(prTitle)}</strong><span class="pr-desc-toggle" title="Show PR description">▾</span></div>`;
+    html += `<div class="pr-title-line"><span class="pr-title-text" title="Click to show PR description">${escapeHtml(prTitle)}</span><span class="pr-desc-toggle" title="Show PR description"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span></div>`;
   }
   // Second line: author + assignees
   if (result) {
@@ -1575,14 +1575,11 @@ function updatePrInfoBar(prNumber, prTitle, result) {
   }
   prInfo.innerHTML = html;
 
-  // Add ▾ toggle handler
+  // Add ▾ toggle handler (both title and chevron)
   const toggleBtn = document.querySelector('.pr-desc-toggle');
-  if (toggleBtn) {
-    toggleBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      togglePrDescDropdown();
-    });
-  }
+  const titleText = document.querySelector('.pr-title-text');
+  if (toggleBtn) toggleBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePrDescDropdown(); });
+  if (titleText) titleText.addEventListener('click', (e) => { e.stopPropagation(); togglePrDescDropdown(); });
 
   // Inject review info into the diff2html file list area (right-aligned, same row as files changed)
   if (result) {
@@ -1684,7 +1681,7 @@ function closePrDescDropdown() {
 document.addEventListener('click', (e) => {
   const dropdown = document.getElementById('pr-desc-dropdown');
   if (dropdown && dropdown.classList.contains('open')) {
-    if (!dropdown.contains(e.target) && !e.target.classList.contains('pr-desc-toggle')) {
+    if (!dropdown.contains(e.target) && !e.target.classList.contains('pr-desc-toggle') && !e.target.closest('.pr-title-text')) {
       closePrDescDropdown();
     }
   }
