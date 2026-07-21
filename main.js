@@ -911,90 +911,72 @@ ipcMain.handle('get-config', async () => ({
 
 // ===================== AGENT RULES PROPOSAL =====================
 
-// Get agent rules files from the repo
+// Get AGENTS.md from the repo
 ipcMain.handle('get-agent-rules', async () => {
   const owner = appConfig.repoOwner;
   const repo = appConfig.repoName;
   if (!owner || !repo) return { error: 'No repo configured' };
   
   try {
-    // Fetch AGENTS.md
     let agentsMd = '';
     try {
       agentsMd = await execPromise(
         `gh api repos/${owner}/${repo}/contents/AGENTS.md --jq .content | base64 -d`
       );
     } catch {}
-    
-    // Fetch referenced instruction files
-    const instructionFiles = {};
-    const instrDir = '.github/instructions';
-    try {
-      const files = await execPromise(
-        `gh api repos/${owner}/${repo}/contents/${instrDir} --jq '.[].name'`
-      );
-      for (const file of files.split('\n').filter(f => f.endsWith('.md'))) {
-        try {
-          const content = await execPromise(
-            `gh api repos/${owner}/${repo}/contents/${instrDir}/${file} --jq .content | base64 -d`
-          );
-          instructionFiles[`${instrDir}/${file}`] = content;
-        } catch {}
-      }
-    } catch {}
-    
-    return { agentsMd, instructionFiles };
+    return { agentsMd };
   } catch (err) {
     return { error: err.message };
   }
 });
 
 // Analyze review feedback against existing rules and propose new ones
-ipcMain.handle('propose-rules', async (event, { feedback, agentsMd, instructionFiles }) => {
+ipcMain.handle('propose-rules', async (event, { feedback, agentsMd }) => {
   const rulesConfig = appConfig.rules || {};
   if (!rulesConfig.enabled) return { proposals: [], disabled: true };
   
   const aiCmd = rulesConfig.aiCommand || appConfig.aiCommand || 'hermes';
+  const owner = appConfig.repoOwner;
+  const repo = appConfig.repoName;
   
-  // Build context of all existing rules
-  let existingRules = `# AGENTS.md\n${agentsMd}\n\n`;
-  for (const [file, content] of Object.entries(instructionFiles || {})) {
-    existingRules += `# ${file}\n${content}\n\n`;
-  }
-  
-  // Build feedback summary
   const feedbackText = feedback.map(f => `- [${f.file}${f.line ? ` line ${f.line}` : ''}] ${f.text}`).join('\n');
   
-  const prompt = `You are analyzing code review feedback to propose new agent rules.
+  const prompt = `You are analyzing code review feedback to propose new agent rules for the ${owner}/${repo} repository.
 
-EXISTING RULES:
-${existingRules}
+AGENTS.md content:
+${agentsMd}
+
+AGENTS.md references other rules files (e.g. .github/instructions/*.md). Read those files as needed to understand the full set of existing rules.
 
 REVIEW FEEDBACK:
 ${feedbackText}
 
 Analyze the feedback. For each piece of feedback that is NOT already covered by an existing rule:
 1. Propose a brief, generalized rule that would prevent similar issues
-2. Indicate which file it should go in (AGENTS.md for general rules, or the appropriate instruction file for language-specific rules)
+2. Recommend which file it belongs in (AGENTS.md for general rules, or the appropriate referenced file for language-specific rules)
 
-Reply with ONLY a JSON array. Each item: {"rule": "...", "file": "path/to/file.md", "reason": "brief reason"}
-If all feedback is already covered, return an empty array: []
-Do not include rules that are already covered by existing rules.
+Reply with ONLY a JSON object:
+{
+  "proposedRules": [
+    {"rule": "...", "file": "path/to/file.md", "reason": "brief reason"}
+  ],
+  "availableFiles": ["AGENTS.md", ".github/instructions/perl.instructions.md", ...]
+}
+
+If all feedback is already covered, return: {"proposedRules": [], "availableFiles": [...]}
 Rules should be generalized, not specific to this one PR.
 Keep rules concise — one sentence each when possible.`;
 
   return new Promise((resolve) => {
     const args = ['send', prompt];
-    let output = '';
     const proc = require('child_process').execFile(aiCmd, args, { timeout: 120000 }, (err, stdout) => {
-      if (err) { resolve({ proposals: [], error: err.message }); return; }
+      if (err) { resolve({ proposals: [], availableFiles: ['AGENTS.md'], error: err.message }); return; }
       try {
-        // Extract JSON from response
-        const match = stdout.match(/\[[\s\S]*\]/);
-        const proposals = match ? JSON.parse(match[0]) : [];
-        resolve({ proposals });
+        const match = stdout.match(/\{[\s\S]*\}/);
+        const parsed = match ? JSON.parse(match[0]) : {};
+        resolve({ proposals: parsed.proposedRules || [], availableFiles: parsed.availableFiles || ['AGENTS.md'] });
       } catch (e) {
-        resolve({ proposals: [], error: 'Failed to parse AI response', raw: stdout });
+        resolve({ proposals: [], availableFiles: ['AGENTS.md'], error: 'Failed to parse AI response', raw: stdout });
       }
     });
   });

@@ -1560,7 +1560,7 @@ function updatePrInfoBar(prNumber, prTitle, result) {
   // Title line + author/assignees line
   let html = '';
   if (prTitle) {
-    html += `<div class="pr-title-line"><strong>${escapeHtml(prTitle)}</strong><button id="btn-pr-desc-toggle" title="Show PR description">▾</button></div>`;
+    html += `<div class="pr-title-line"><strong>${escapeHtml(prTitle)}</strong><span class="pr-desc-toggle" title="Show PR description">▾</span></div>`;
   }
   // Second line: author + assignees
   if (result) {
@@ -1576,7 +1576,7 @@ function updatePrInfoBar(prNumber, prTitle, result) {
   prInfo.innerHTML = html;
 
   // Add ▾ toggle handler
-  const toggleBtn = document.getElementById('btn-pr-desc-toggle');
+  const toggleBtn = document.querySelector('.pr-desc-toggle');
   if (toggleBtn) {
     toggleBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -1644,23 +1644,39 @@ function togglePrDescDropdown() {
 
   dropdown.innerHTML = `<div class="pr-desc-content">${rendered}</div>`;
 
-  // Position below the review bar
+  // Position below the review bar, left-aligned under the title
   const reviewBar = document.getElementById('review-bar');
   const barRect = reviewBar.getBoundingClientRect();
+  const prInfo = document.getElementById('pr-info');
+  const infoRect = prInfo.getBoundingClientRect();
   dropdown.style.top = `${barRect.bottom + 4}px`;
-  dropdown.style.left = '50%';
-  dropdown.style.transform = 'translateX(-50%)';
+  dropdown.style.left = `${infoRect.left}px`;
+  dropdown.style.transform = 'none';
+
+  // Check for large images and expand if needed
+  setTimeout(() => {
+    const imgs = dropdown.querySelectorAll('img');
+    let hasLargeImg = false;
+    for (const img of imgs) {
+      if (img.naturalWidth > 600) { hasLargeImg = true; break; }
+    }
+    if (hasLargeImg) {
+      dropdown.style.width = '95vw';
+      dropdown.style.maxWidth = '95vw';
+    }
+  }, 50);
+
   dropdown.classList.add('open');
 
   // Rotate ▾ arrow
-  const toggleBtn = document.getElementById('btn-pr-desc-toggle');
+  const toggleBtn = document.querySelector('.pr-desc-toggle');
   if (toggleBtn) toggleBtn.classList.add('open');
 }
 
 function closePrDescDropdown() {
   const dropdown = document.getElementById('pr-desc-dropdown');
-  if (dropdown) dropdown.classList.remove('open');
-  const toggleBtn = document.getElementById('btn-pr-desc-toggle');
+  if (dropdown) { dropdown.classList.remove('open'); dropdown.style.width = ''; dropdown.style.maxWidth = ''; }
+  const toggleBtn = document.querySelector('.pr-desc-toggle');
   if (toggleBtn) toggleBtn.classList.remove('open');
 }
 
@@ -1668,7 +1684,7 @@ function closePrDescDropdown() {
 document.addEventListener('click', (e) => {
   const dropdown = document.getElementById('pr-desc-dropdown');
   if (dropdown && dropdown.classList.contains('open')) {
-    if (!dropdown.contains(e.target) && e.target.id !== 'btn-pr-desc-toggle') {
+    if (!dropdown.contains(e.target) && !e.target.classList.contains('pr-desc-toggle')) {
       closePrDescDropdown();
     }
   }
@@ -1797,24 +1813,17 @@ async function showRulesDialog(reviewFeedback) {
   rulesBody.innerHTML = '<div class="rules-loading">Analyzing feedback against existing rules...</div>';
   btnRulesSave.disabled = true;
   
-  // Fetch existing rules
+  // Fetch AGENTS.md
   const rulesData = await window.electronAPI.getAgentRules();
   if (rulesData.error) {
     rulesBody.innerHTML = `<div class="rules-empty">Error: ${escapeHtml(rulesData.error)}</div>`;
     return;
   }
   
-  // Build available files list
-  rulesAvailableFiles = ['AGENTS.md'];
-  if (rulesData.instructionFiles) {
-    rulesAvailableFiles.push(...Object.keys(rulesData.instructionFiles));
-  }
-  
-  // Get proposals from AI
+  // Get proposals from AI (AI reads referenced files and returns availableFiles)
   const result = await window.electronAPI.proposeRules({
     feedback: reviewFeedback,
-    agentsMd: rulesData.agentsMd || '',
-    instructionFiles: rulesData.instructionFiles || {}
+    agentsMd: rulesData.agentsMd || ''
   });
   
   if (result.disabled) {
@@ -1828,6 +1837,7 @@ async function showRulesDialog(reviewFeedback) {
   }
   
   currentRuleProposals = result.proposals || [];
+  rulesAvailableFiles = result.availableFiles || ['AGENTS.md'];
   
   if (currentRuleProposals.length === 0) {
     rulesBody.innerHTML = '<div class="rules-empty">All feedback is already covered by existing rules. No new rules needed.</div>';
