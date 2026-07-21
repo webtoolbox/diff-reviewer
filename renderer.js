@@ -782,30 +782,59 @@ window.electronAPI.getConfig().then((config) => {
 // ===================== IMAGE PASTE =====================
 
 function setupImagePaste(textarea) {
+  const form = textarea.closest('.comment-form');
+
+  function handleImageFile(file) {
+    if (!file || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      const existing = form.querySelector('.pasted-image');
+      if (existing) existing.remove();
+      const img = document.createElement('img');
+      img.className = 'pasted-image';
+      img.src = dataUrl;
+      img.style.cssText = 'max-width:100%;max-height:200px;border-radius:4px;border:1px solid #30363d;margin-top:4px;display:block;cursor:pointer;';
+      img.title = 'Click to remove';
+      img.addEventListener('click', () => img.remove());
+      const actions = form.querySelector('.actions');
+      form.insertBefore(img, actions);
+    };
+    reader.readAsDataURL(file);
+  }
+
+  // Paste support
   textarea.addEventListener('paste', (e) => {
     const items = e.clipboardData && e.clipboardData.items;
     if (!items) return;
     for (const item of items) {
       if (item.type.startsWith('image/')) {
         e.preventDefault();
-        const blob = item.getAsFile();
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          const dataUrl = ev.target.result;
-          // Show image preview below textarea
-          const form = textarea.closest('.comment-form');
-          const existing = form.querySelector('.pasted-image');
-          if (existing) existing.remove();
-          const img = document.createElement('img');
-          img.className = 'pasted-image';
-          img.src = dataUrl;
-          img.style.cssText = 'max-width:100%;max-height:200px;border-radius:4px;border:1px solid #30363d;margin-top:4px;display:block;';
-          const actions = form.querySelector('.actions');
-          form.insertBefore(img, actions);
-        };
-        reader.readAsDataURL(blob);
+        handleImageFile(item.getAsFile());
         return;
       }
+    }
+  });
+
+  // Drag-and-drop support on the textarea
+  textarea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    textarea.style.borderColor = '#58a6ff';
+  });
+
+  textarea.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    textarea.style.borderColor = '#30363d';
+  });
+
+  textarea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    textarea.style.borderColor = '#30363d';
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleImageFile(files[0]);
     }
   });
 }
