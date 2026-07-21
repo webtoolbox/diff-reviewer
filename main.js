@@ -161,6 +161,23 @@ ipcMain.handle('save-draft', async (event, { filePath, draft }) => {
   return saveDraft(filePath, draft);
 });
 
+// Save image to disk (returns relative path for markdown reference)
+ipcMain.handle('save-image', async (event, { reviewDir, imageDataUrl, fileName }) => {
+  try {
+    const dir = expandPath(reviewDir || appConfig.reviewSaveDir);
+    const imagesDir = path.join(dir, 'images');
+    fs.mkdirSync(imagesDir, { recursive: true });
+    const base64 = imageDataUrl.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64, 'base64');
+    const filePath = path.join(imagesDir, fileName);
+    fs.writeFileSync(filePath, buffer);
+    return `images/${fileName}`;
+  } catch (err) {
+    console.error('[image] save failed:', err.message);
+    return null;
+  }
+});
+
 // Load draft for a given diff file
 ipcMain.handle('load-draft', async (event, filePath) => {
   return loadDraft(filePath);

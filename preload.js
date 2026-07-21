@@ -8,5 +8,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteDraft: (filePath) => ipcRenderer.invoke('delete-draft', filePath),
   getConfig: () => ipcRenderer.invoke('get-config'),
   exportMarkdown: (data) => ipcRenderer.invoke('export-markdown', data),
+  saveImage: (data) => ipcRenderer.invoke('save-image', data),
   onLoadDiff: (callback) => ipcRenderer.on('load-diff', (event, data) => callback(data))
 });

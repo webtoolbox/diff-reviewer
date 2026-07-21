@@ -217,7 +217,7 @@ async function runTests() {
   const btnText = await mainWindow.webContents.executeJavaScript(`
     document.getElementById('btn-request-changes').textContent
   `);
-  assert('Button shows comment count', btnText.includes('1 comment'), `text: "${btnText}"`);
+  assert('Button shows comment count', btnText.includes('1'), `text: "${btnText}"`);
 
   // TEST 21: Submit another comment on right side
   await mainWindow.webContents.executeJavaScript(`
@@ -252,7 +252,7 @@ async function runTests() {
   const btnText2 = await mainWindow.webContents.executeJavaScript(`
     document.getElementById('btn-request-changes').textContent
   `);
-  assert('Button shows 2 comments', btnText2.includes('2 comments'), `text: "${btnText2}"`);
+  assert('Button shows 2 comments', btnText2.includes('2'), `text: "${btnText2}"`);
 
   // TEST 24: Review body textarea works
   const textareaTest = await mainWindow.webContents.executeJavaScript(`

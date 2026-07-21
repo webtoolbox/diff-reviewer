@@ -605,14 +605,10 @@ function resetButtons() {
 }
 
 function updateCommentCount() {
-  const prCount = comments.filter(c => !c.isAiTagged).length;
-  const aiCount = comments.filter(c => c.isAiTagged).length;
-  let label = '';
-  if (prCount > 0) label += `${prCount} comment${prCount > 1 ? 's' : ''}`;
-  if (aiCount > 0) label += `${label ? ' + ' : ''}${aiCount} AI`;
-  if (label) {
-    btnRequestChanges.textContent = `Request Changes (${label})`;
-    btnComment.textContent = `Comment (${label})`;
+  const count = comments.length;
+  if (count > 0) {
+    btnRequestChanges.innerHTML = `Request Changes <span class="badge">${count}</span>`;
+    btnComment.innerHTML = `Comment <span class="badge">${count}</span>`;
   } else {
     btnRequestChanges.textContent = 'Request Changes';
     btnComment.textContent = 'Comment';
@@ -900,7 +896,16 @@ async function exportAsMarkdown() {
           }
           md += `> ${c.text}\n\n`;
           if (c.imageDataUrl) {
-            md += `![comment image](${c.imageDataUrl})\n\n`;
+            // Save image as file, use relative path in markdown
+            const imgName = `comment-${comments.indexOf(c)}-${Date.now()}.png`;
+            const imgPath = await window.electronAPI.saveImage({
+              reviewDir: null, imageDataUrl: c.imageDataUrl, fileName: imgName
+            });
+            if (imgPath) {
+              md += `![comment image](${imgPath})\n\n`;
+            } else {
+              md += `*(image could not be saved)*\n\n`;
+            }
           }
         }
       }
