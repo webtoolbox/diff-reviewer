@@ -73,11 +73,12 @@ const positionalArgs = rawArgs.filter((_, i) => {
     && prev !== '--chat-id' && prev !== '--pr-number';
 });
 
-function sendAiMessage(message) {
+function sendAiMessage(message, prNumber) {
   if (!aiChatId) {
-    // No chat-id specified — send without --to (creates new session)
+    // No chat-id specified — prepend PR context so agent understands the message
+    const prefix = prNumber ? `[PR #${prNumber}] ` : '';
     console.log('[ai] No chat-id configured, sending to new session');
-    const args = [appConfig.aiSendArgs[0], message]; // Just "send" without "--to"
+    const args = [appConfig.aiSendArgs[0], prefix + message];
     execFile(appConfig.aiCommand, args, (err) => {
       if (err) console.error(`[${appConfig.aiCommand}] send failed:`, err.message);
       else console.log(`[${appConfig.aiCommand}] message sent to new session`);
@@ -746,7 +747,7 @@ ipcMain.handle('save-review', async (event, review) => {
       const codeContext = c.codeContext || '';
       msg = `[${c.file} line ${c.line} (${side})]${codeContext ? '\n```' + codeContext + '```' : ''}\n${c.text.replace(aiTag, '').trim()}`;
     }
-    sendAiMessage(msg);
+    sendAiMessage(msg, review.prNumber || cliPrNumber);
   }
 
   const reviewToSave = { ...review, comments: prComments };
@@ -764,7 +765,7 @@ ipcMain.handle('save-review', async (event, review) => {
   let summary = `Review submitted for PR #${prNum || '?'}: ${review.type}`;
   if (prCount > 0) summary += ` with ${prCount} line comment${prCount !== 1 ? 's' : ''}`;
   if (aiCount > 0) summary += ` (${aiCount} sent to AI)`;
-  sendAiMessage(summary);
+  sendAiMessage(summary, prNum);
 
   return outputPath;
 });

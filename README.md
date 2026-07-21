@@ -31,6 +31,8 @@ A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, fi
 ![Commits Panel](screenshots/commits-panel.jpg)
 
 - **Line-level commit tooltips** — hover over line numbers to see which commit changed that line
+
+![Commit Tooltip](screenshots/commit-tooltip.jpg)
 - **Commit links** — click any commit to open it in your browser
 
 ### File Filtering
