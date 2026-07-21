@@ -18,6 +18,8 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 
 **Automated agent rule proposals**: After submitting a review, the app can analyze your feedback against the repo's AGENTS.md rules and propose new rules when needed. This replaces a workflow that was previously done manually — reviewing feedback, identifying gaps in agent rules, and updating the rule files.
 
+**Configurable file filtering**: On GitHub, all files are shown by default and you have to manually unselect file types you don't need to review every time. Diff Reviewer lets you configure default file extensions so only relevant files show up. You can also use the file extension filter pane to override that for a specific PR.
+
 ## Features
 
 ### Core Review Features
