@@ -1,11 +1,12 @@
 # Diff Reviewer
 
-A macOS desktop app for reviewing GitHub PR diffs with line-level commenting. Built with Electron and [diff2html](https://github.com/rtfpessoa/diff2html).
+A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, file-level comments, auto-save, and AI agent integration. Built with Electron and [diff2html](https://github.com/rtfpessoa/diff2html).
 
 ## Install
 
 ```bash
-cd ~/Repos/diff-reviewer
+git clone https://github.com/webtoolbox/diff-reviewer.git
+cd diff-reviewer
 npm install
 ```
 
@@ -53,17 +54,43 @@ Edit `config.json` to customize the AI agent integration:
 
 ## Features
 
-- **Side-by-side diff** with syntax highlighting (diff2html)
-- **Line-level commenting** — hover any line, click `+` to add a comment
-- **Both sides** — comment on old (left) and new (right) code
+### Commenting
+- **Line-level comments** — hover any line, click `+` to add a comment
+- **File-level comments** — click the 💬 button on any file header
 - **Multiple comments per line** — add as many comments as needed on the same line
-- **@Hermes tag** — start a comment with `@Hermes` (or your configured prefix) to send it directly to the AI agent instead of including it in the PR review
+- **Both sides** — comment on old (left) and new (right) code
 - **Edit/Delete** — edit or delete any comment after submitting
-- **Review actions** — Approve, Request Changes, or Comment
-- **File list** — scrollable, collapses automatically for large PRs
+
+### AI Integration
+- **@Hermes tag** — start a comment with `@Hermes` (or your configured prefix) to send it directly to the AI agent
+- **Configurable CLI** — works with any AI agent (Hermes, Claude, Cursor, etc.)
+- **Excluded from review** — @Hermes-tagged comments are sent to AI, not included in PR review
+
+### Auto-Save & Resume
+- **Auto-save on every change** — comments are saved to a draft file automatically
+- **Resume on restart** — reopen the same diff file and your comments are restored
+- **Crash-safe** — if the app crashes or computer restarts, your work is preserved
+
+### Keyboard Shortcuts
+
+| Shortcut | Action |
+|----------|--------|
+| `Cmd+Shift+A` | Approve PR |
+| `Cmd+Shift+R` | Request Changes |
+| `Cmd+Shift+C` | Submit as Comment |
+| `Cmd+Enter` | Submit current comment form |
+| `Cmd+Shift+Enter` | Submit review (when no comment form open) |
+| `Esc` | Cancel/close comment form |
+
+All buttons show their shortcut keys in tooltips on hover.
+
+### UI
+- **Side-by-side diff** with syntax highlighting (diff2html)
 - **Dark theme** matching GitHub's dark mode
+- **Scrollable file list** — collapses automatically for large PRs
 - **Drag & drop** — drop `.diff` files onto the window
-- **Keyboard shortcuts** — `Cmd+Enter` to submit comment, `Esc` to cancel
+- **Inline comment forms** — appear between lines, never block code
+- **File-level comment button** — 💬 on each file header with comment count badge
 
 ## @Hermes Tag
 
@@ -82,15 +109,17 @@ Example: `@Hermes Why was this change needed?` sends the question to the AI agen
 2. Browse the side-by-side diff with syntax highlighting
 3. Hover over any line to reveal the `+` comment button
 4. Click to add a comment — form appears inline between lines
-5. Add multiple comments per line, tag with `@Hermes` for AI messages
-6. Edit or delete any comment
-7. Add an optional review summary
-8. Click **Approve**, **Request Changes**, or **Comment** to submit
+5. Click the 💬 on a file header to add a file-level comment
+6. Add multiple comments per line, tag with `@Hermes` for AI messages
+7. Edit or delete any comment
+8. Add an optional review summary
+9. Use keyboard shortcuts or click **Approve**, **Request Changes**, or **Comment** to submit
 
 On submit, the app:
 - Saves PR comments as JSON to the configured `reviewSaveDir`
 - Sends `@Hermes`-tagged messages to the AI agent via CLI
 - Sends a summary notification to the AI agent
+- Deletes the draft file (review is complete)
 
 ## Review JSON Format
 
@@ -104,7 +133,15 @@ On submit, the app:
       "file": "modules/Members/Pages.pm",
       "line": "42",
       "side": "RIGHT",
-      "text": "Use a class selector instead of attribute selector."
+      "text": "Use a class selector instead of attribute selector.",
+      "level": "line"
+    },
+    {
+      "file": "modules/Members/Pages.pm",
+      "line": null,
+      "side": null,
+      "text": "This file needs refactoring.",
+      "level": "file"
     }
   ],
   "timestamp": "2026-07-21T07:44:33.089Z"
