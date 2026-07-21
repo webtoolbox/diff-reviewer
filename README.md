@@ -10,9 +10,8 @@ A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, fi
 - **Side-by-side diff viewing** powered by diff2html
 - **Line-level commenting** on both left (old) and right (new) sides
 - **File-level comments** for overall feedback on a file
-- **Review body** with optional summary text
 - **Three review types**: Comment, Request Changes, Approve
-- **Direct GitHub submission** — reviews submitted directly to GitHub via `gh` API
+- **Direct GitHub submission** — reviews submitted directly to GitHub
 - **Auto-save drafts** — comments survive app restarts
 - **Export as markdown** with code context and images
 
@@ -22,29 +21,21 @@ A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, fi
 ![PR Dropdown](screenshots/pr-dropdown.jpg)
 
 - **Configurable filtering** — by review requested, title contains
-- **New window** — open multiple PRs in separate windows simultaneously
-- **PR number input** — type a PR number and press Enter to load
-- **PR URL link** — click to open the PR in your browser
-- **PR info bar** — shows PR title, author, and assignees
+- **Open PRs in new windows** via the ↗ icon in the dropdown
 
 ### Commits & History
 - **Commits panel** — view all commits in the PR with messages
 
 ![Commits Panel](screenshots/commits-panel.jpg)
 
-- **Line-level commit tooltips** — hover over line numbers to see which commit changed that line (with configurable delay)
+- **Line-level commit attribution** — hover over line numbers to see which commit changed that line
 
 ![Commit Tooltip](screenshots/commit-tooltip.jpg)
-- **Multi-line commit messages** — tooltips show full commit descriptions with body text
-- **Commit links** — click any commit to open it in your browser
 
 ### File Filtering
 - **File extension filter** — filter the diff by file type
 
 ![File Filter](screenshots/file-filter.jpg)
-
-- **Configurable defaults** — set your preferred extensions in config
-- **Intelligent checkboxes** — only shows extensions found in the current diff
 
 ### Commenting
 - **Line-level comments** — click the + button on any line
@@ -55,22 +46,17 @@ A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, fi
 
 ![File Comment](screenshots/file-comment.jpg)
 
-- **Image support** — paste (Cmd+V) or drag-and-drop images
+- **Image support** — paste (Cmd+V) or drag-and-drop images into comments
 - **S3 upload** — images uploaded to S3 for inline GitHub markdown
 - **AI agent integration** — tag @Hermes in comments to message an AI agent
-- **AI PR context** — when no chat-id is specified, PR number is included in messages for context
 
 ### Multi-Window Support
-- **File > New Window** (Cmd+N) — open blank Diff Reviewer windows
-- **File > Open Diff** (Cmd+O) — open .diff files
-- Each window is independent with its own PR/comments
-- Open PRs in new windows via the ↗ icon in the dropdown
+- **New windows** (Cmd+N) — open multiple PRs in separate windows simultaneously
+- **File association** — .diff and .patch files open with Diff Reviewer
 
 ### macOS Integration
-- **Dock icon** with custom diff-style icon
-- **File association** — .diff and .patch files open with Diff Reviewer
-- **Application menu** with standard macOS shortcuts
 - **.app bundle** — install to /Applications like any native app
+- **Dock icon** with custom diff-style icon
 
 ### Data Management
 - **Persistent storage** — all data in `~/Library/Application Support/diff-reviewer/`
