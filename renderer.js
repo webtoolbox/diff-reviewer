@@ -146,6 +146,9 @@ function loadDiff(content, filePath) {
   }
 
   currentDiff = content;
+  currentDiffContent = content;
+  currentDiffFilePath = filePath;
+  allExtensionsInDiff = extractExtensionsFromDiff(content);
   if (filePath) currentFilePath = filePath;
   comments = [];
   fileCommentCounts = {};
@@ -1002,6 +1005,9 @@ async function loadPrByNumber(prNumber) {
       return;
     }
     currentFileName = result.fileName || `pr-${prNumber}.diff`;
+    currentDiffContent = result.content;
+    currentDiffFilePath = result.filePath;
+    allExtensionsInDiff = extractExtensionsFromDiff(result.content);
     loadDiff(result.content, result.filePath);
 
     // Update info bar with review info
@@ -1128,3 +1134,205 @@ document.addEventListener('click', (e) => {
 window.electronAPI.onTriggerOpenFile(() => {
   btnOpen.click();
 });
+
+// ===================== FILE EXTENSION FILTER =====================
+
+const btnFileFilter = document.getElementById('btn-file-filter');
+const fileFilterDropdown = document.getElementById('file-filter-dropdown');
+const filterList = document.getElementById('filter-list');
+const filterSelectAll = document.getElementById('filter-select-all');
+const filterSelectNone = document.getElementById('filter-select-none');
+const filterApply = document.getElementById('filter-apply');
+let fileFilterOpen = false;
+let activeExtensions = [];
+let allExtensionsInDiff = [];
+
+// All possible file extensions (comprehensive list)
+const ALL_EXTENSIONS = [
+  '.pm', '.cgi', '.js', '.jsx', '.ts', '.tsx', '.tpl', '.css', '.scss', '.less',
+  '.json', '.html', '.py', '.rb', '.go', '.java', '.c', '.cpp', '.h', '.hpp',
+  '.sh', '.bash', '.sql', '.yaml', '.yml', '.toml', '.xml', '.md', '.txt',
+  '.php', '.pl', '.rs', '.swift', '.kt', '.scala', '.r', '.m', '.mm',
+  '.vue', '.svelte', '.astro', '.elm', '.ex', '.exs', '.erl', '.hs'
+];
+
+// Initialize filter from config
+async function initFileFilter() {
+  const config = await window.electronAPI.getConfig();
+  const diffConfig = config.diff || {};
+  activeExtensions = diffConfig.codeFileExtensions || ALL_EXTENSIONS;
+}
+
+initFileFilter();
+
+// Extract extensions from diff content
+function extractExtensionsFromDiff(diffContent) {
+  const extensions = new Set();
+  const lines = diffContent.split('\n');
+  for (const line of lines) {
+    if (line.startsWith('+++ b/') || line.startsWith('--- a/')) {
+      const filePath = line.substring(6);
+      const ext = filePath.includes('.') ? '.' + filePath.split('.').pop() : '';
+      if (ext && ALL_EXTENSIONS.includes(ext)) {
+        extensions.add(ext);
+      }
+    }
+  }
+  return Array.from(extensions).sort();
+}
+
+// Open/close file filter dropdown
+btnFileFilter.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (fileFilterOpen) {
+    closeFileFilterDropdown();
+  } else {
+    openFileFilterDropdown();
+  }
+});
+
+function closeFileFilterDropdown() {
+  fileFilterDropdown.classList.remove('open');
+  fileFilterOpen = false;
+}
+
+function openFileFilterDropdown() {
+  // Position dropdown under the button
+  const btnRect = btnFileFilter.getBoundingClientRect();
+  fileFilterDropdown.style.top = (btnRect.bottom + 4) + 'px';
+  fileFilterDropdown.style.right = (window.innerWidth - btnRect.right) + 'px';
+  fileFilterDropdown.style.left = 'auto';
+
+  fileFilterDropdown.classList.add('open');
+  fileFilterOpen = true;
+
+  // Build checkbox list from extensions found in diff
+  const extensionsToShow = allExtensionsInDiff.length > 0 ? allExtensionsInDiff : ALL_EXTENSIONS;
+
+  let html = '';
+  for (const ext of extensionsToShow) {
+    const checked = activeExtensions.includes(ext) ? 'checked' : '';
+    const count = allExtensionsInDiff.includes(ext) ? getFileCountForExtension(ext) : '';
+    html += `
+      <div class="filter-item">
+        <input type="checkbox" id="ext-${ext}" value="${ext}" ${checked}>
+        <label for="ext-${ext}">${ext}</label>
+        ${count ? `<span style="font-size:11px;color:#8b949e">${count}</span>` : ''}
+      </div>`;
+  }
+  filterList.innerHTML = html;
+
+  // Update button state
+  updateFilterButtonState();
+}
+
+// Get file count for an extension in current diff
+function getFileCountForExtension(ext) {
+  // This would need to be tracked when diff is loaded
+  // For now, just show a checkmark if it's in the active list
+  return '';
+}
+
+// Update filter button appearance
+function updateFilterButtonState() {
+  const isFiltered = activeExtensions.length < ALL_EXTENSIONS.length;
+  btnFileFilter.classList.toggle('active', isFiltered);
+}
+
+// Select all
+filterSelectAll.addEventListener('click', () => {
+  filterList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = true;
+  });
+});
+
+// Select none
+filterSelectNone.addEventListener('click', () => {
+  filterList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.checked = false;
+  });
+});
+
+// Apply filter
+filterApply.addEventListener('click', () => {
+  const selected = [];
+  filterList.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+    selected.push(cb.value);
+  });
+  activeExtensions = selected;
+  updateFilterButtonState();
+  closeFileFilterDropdown();
+
+  // Re-render the diff with filtered extensions
+  if (currentDiffContent) {
+    renderFilteredDiff();
+  }
+});
+
+// Close dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  if (fileFilterOpen && !fileFilterDropdown.contains(e.target) && e.target !== btnFileFilter) {
+    closeFileFilterDropdown();
+  }
+});
+
+// Store current diff content for re-rendering
+let currentDiffContent = null;
+let currentDiffFilePath = null;
+
+// Override loadDiff to store content and apply filter
+const originalLoadDiff = typeof loadDiff !== 'undefined' ? loadDiff : null;
+
+// This function will be called to re-render with current filter
+function renderFilteredDiff() {
+  if (!currentDiffContent) return;
+
+  // Parse diff and filter by extensions
+  const filteredDiff = filterDiffByExtensions(currentDiffContent, activeExtensions);
+
+  // Use diff2html to render
+  const diff2htmlUi = new Diff2HtmlUI(document.getElementById('diff-container'), filteredDiff, {
+    drawFileList: true,
+    matching: 'lines',
+    outputFormat: 'side-by-side',
+    colorScheme: 'dark'
+  });
+  diff2htmlUi.draw();
+  diff2htmlUi.fileListToggle(false);
+
+  // Re-add comment buttons
+  addLineCommentButtons();
+  addFileCommentButtons();
+}
+
+// Filter diff content by file extensions
+function filterDiffByExtensions(diffContent, extensions) {
+  if (!extensions || extensions.length === 0) return diffContent;
+
+  const files = diffContent.split(/^diff --git /m);
+  const filteredFiles = files.filter(file => {
+    if (!file.trim()) return false;
+    // Check if this file matches any of the selected extensions
+    const firstLine = file.split('\n')[0];
+    const filePath = firstLine.match(/a\/(.+?) b\//);
+    if (!filePath) return false;
+    const ext = filePath[1].includes('.') ? '.' + filePath[1].split('.').pop() : '';
+    return extensions.includes(ext);
+  });
+
+  return filteredFiles.map(file => 'diff --git ' + file).join('');
+}
+
+// Update the loadDiff function to store content
+if (typeof window !== 'undefined') {
+  // Intercept the loadDiff call to store the content
+  const origLoadDiff = window.loadDiff;
+  if (origLoadDiff) {
+    window.loadDiff = function(content, filePath) {
+      currentDiffContent = content;
+      currentDiffFilePath = filePath;
+      allExtensionsInDiff = extractExtensionsFromDiff(content);
+      origLoadDiff.call(this, content, filePath);
+    };
+  }
+}
