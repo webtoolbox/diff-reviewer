@@ -1031,6 +1031,9 @@ async function loadPrByNumber(prNumber) {
     document.title = `Diff Reviewer — PR #${prNumber}`;
     // Store PR number
     prNumberInput.value = prNumber;
+
+    // Load commits for this PR
+    loadPrCommits(prNumber);
   } catch (err) {
     prInfo.innerHTML = `<strong style="color:#f85149">Error:</strong> ${err.message}`;
   }
@@ -1335,3 +1338,228 @@ if (typeof window !== 'undefined') {
     };
   }
 }
+
+// ===================== COMMITS PANEL & PR URL =====================
+
+const btnCommits = document.getElementById('btn-commits');
+const commitsPanel = document.getElementById('commits-panel');
+const commitsCount = document.getElementById('commits-count');
+let commitsPanelOpen = false;
+let prCommits = [];
+let prUrl = '';
+let blameCache = {};  // { filePath: { lineNum: sha } }
+let commitMap = {};   // { sha: commitObj }
+
+// Toggle commits panel
+btnCommits.addEventListener('click', (e) => {
+  e.stopPropagation();
+  if (commitsPanelOpen) {
+    closeCommitsPanel();
+  } else {
+    openCommitsPanel();
+  }
+});
+
+function closeCommitsPanel() {
+  commitsPanel.classList.remove('open');
+  commitsPanelOpen = false;
+}
+
+function openCommitsPanel() {
+  const btnRect = btnCommits.getBoundingClientRect();
+  commitsPanel.style.top = (btnRect.bottom + 4) + 'px';
+  commitsPanel.style.right = (window.innerWidth - btnRect.right) + 'px';
+  commitsPanel.style.left = 'auto';
+
+  commitsPanel.classList.add('open');
+  commitsPanelOpen = true;
+
+  if (prCommits.length > 0) {
+    renderCommitsList();
+  }
+}
+
+function renderCommitsList() {
+  commitsCount.textContent = `${prCommits.length} commit${prCommits.length !== 1 ? 's' : ''}`;
+
+  let html = `<div class="commits-header"><span>Commits</span><span style="font-size:11px;color:#8b949e">${prCommits.length} commits</span></div>`;
+  for (const commit of prCommits) {
+    const date = new Date(commit.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    html += `
+      <div class="commit-item" data-sha="${commit.sha}" title="${escapeHtml(commit.fullMessage)}">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="commit-sha">${commit.sha}</span>
+          <span style="font-size:11px;color:#8b949e">${commit.author} · ${date}</span>
+        </div>
+        <div class="commit-message">${escapeHtml(commit.message)}</div>
+      </div>`;
+  }
+  commitsPanel.innerHTML = html;
+
+  // Click a commit to open it in browser
+  commitsPanel.querySelectorAll('.commit-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const sha = item.dataset.sha;
+      const commit = commitMap[sha];
+      if (commit && commit.url) {
+        require('electron').shell.openExternal(commit.url);
+      }
+    });
+  });
+}
+
+// Close commits panel on outside click
+document.addEventListener('click', (e) => {
+  if (commitsPanelOpen && !commitsPanel.contains(e.target) && e.target !== btnCommits) {
+    closeCommitsPanel();
+  }
+});
+
+// Load commits when a PR is loaded
+async function loadPrCommits(prNumber) {
+  try {
+    const result = await window.electronAPI.getPrCommits(prNumber);
+    if (result.error) {
+      console.error('[commits] error:', result.error);
+      return;
+    }
+    prCommits = result.commits || [];
+    prUrl = result.prUrl || '';
+
+    // Build commit map
+    commitMap = {};
+    for (const commit of prCommits) {
+      commitMap[commit.sha] = commit;
+      // Also map full SHA prefix variations
+      for (let len = 7; len <= 12; len++) {
+        commitMap[commit.fullSha.substring(0, len)] = commit;
+      }
+    }
+
+    // Show commits button
+    btnCommits.style.display = 'flex';
+
+    // Update PR info bar with URL link
+    updatePrInfoBar(prNumber);
+
+    // Load blame data for files in the diff
+    loadBlameData(prNumber);
+  } catch (err) {
+    console.error('[commits] load failed:', err.message);
+  }
+}
+
+// Update PR info bar to include clickable PR URL
+function updatePrInfoBar(prNumber) {
+  const currentInfo = prInfo.innerHTML;
+  if (prUrl) {
+    const linkHtml = ` <a class="pr-url-link" href="${prUrl}" title="Open PR #${prNumber} in browser">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
+      </svg>
+      PR #${prNumber}
+    </a>`;
+    // Only add link if not already present
+    if (!currentInfo.includes('pr-url-link')) {
+      prInfo.innerHTML = currentInfo + linkHtml;
+    }
+  }
+}
+
+// Open PR URL in browser
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.pr-url-link');
+  if (link) {
+    e.preventDefault();
+    const { shell } = require('electron');
+    shell.openExternal(link.href);
+  }
+});
+
+// Load blame data for files in the diff
+async function loadBlameData(prNumber) {
+  if (!currentDiffContent) return;
+
+  // Extract file paths from diff
+  const files = [];
+  const lines = currentDiffContent.split('\n');
+  for (const line of lines) {
+    if (line.startsWith('+++ b/')) {
+      files.push(line.substring(6));
+    }
+  }
+
+  // Load blame for each file (in parallel, limit to avoid overwhelming)
+  const blamePromises = files.slice(0, 20).map(async (filePath) => {
+    try {
+      const blame = await window.electronAPI.getFileBlame({ prNumber, filePath });
+      blameCache[filePath] = blame;
+    } catch (err) {
+      // Ignore blame errors
+    }
+  });
+
+  await Promise.all(blamePromises);
+
+  // Add tooltips to line numbers
+  addCommitTooltipsToLineNumbers();
+}
+
+// Add hover tooltips to line numbers showing commit info
+function addCommitTooltipsToLineNumbers() {
+  // Remove existing listeners
+  document.querySelectorAll('.d2h-code-side-linenumber').forEach(el => {
+    el.removeEventListener('mouseenter', handleLineNumberHover);
+    el.addEventListener('mouseenter', handleLineNumberHover);
+    el.addEventListener('mouseleave', handleLineNumberLeave);
+  });
+}
+
+let activeTooltip = null;
+
+function handleLineNumberHover(e) {
+  const td = e.target;
+  const lineText = td.textContent.trim();
+  const lineNum = parseInt(lineText, 10);
+  if (isNaN(lineNum)) return;
+
+  // Find the file this line belongs to
+  const fileWrapper = td.closest('.d2h-file-wrapper');
+  if (!fileWrapper) return;
+  const fileNameEl = fileWrapper.querySelector('.d2h-file-name');
+  if (!fileNameEl) return;
+  const fileName = fileNameEl.textContent.trim();
+
+  // Look up blame
+  const blame = blameCache[fileName];
+  if (!blame || !blame[lineNum]) return;
+
+  const sha = blame[lineNum];
+  const commit = commitMap[sha];
+  if (!commit) return;
+
+  // Show tooltip
+  const tooltip = document.createElement('div');
+  tooltip.className = 'commit-tooltip';
+  tooltip.innerHTML = `
+    <div class="tt-sha">${commit.sha}</div>
+    <div class="tt-message">${escapeHtml(commit.message)}</div>
+    <div class="tt-author">${commit.author} · ${new Date(commit.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+  `;
+
+  const rect = td.getBoundingClientRect();
+  tooltip.style.left = (rect.right + 8) + 'px';
+  tooltip.style.top = rect.top + 'px';
+
+  document.body.appendChild(tooltip);
+  activeTooltip = tooltip;
+}
+
+function handleLineNumberLeave() {
+  if (activeTooltip) {
+    activeTooltip.remove();
+    activeTooltip = null;
+  }
+}
+
+

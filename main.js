@@ -765,6 +765,65 @@ ipcMain.handle('export-markdown', async (event, { markdown, defaultName }) => {
   return null;
 });
 
+// Get commits for a PR
+ipcMain.handle('get-pr-commits', async (event, prNumber) => {
+  const owner = appConfig.repoOwner || 'webtoolbox';
+  const repo = appConfig.repoName || 'Website-Toolbox';
+  try {
+    const stdout = await execPromise(
+      `gh api "repos/${owner}/${repo}/pulls/${prNumber}/commits?per_page=100"`
+    );
+    const commits = JSON.parse(stdout || '[]');
+    return {
+      commits: commits.map(c => ({
+        sha: c.sha.substring(0, 7),
+        fullSha: c.sha,
+        message: c.commit.message.split('\n')[0],
+        fullMessage: c.commit.message,
+        author: c.commit.author.name,
+        date: c.commit.author.date,
+        url: c.html_url
+      })),
+      prUrl: `https://github.com/${owner}/${repo}/pull/${prNumber}`
+    };
+  } catch (err) {
+    console.error('[commits] failed:', err.message);
+    return { commits: [], error: err.message };
+  }
+});
+
+// Get blame/annotation for a file to map lines to commits
+ipcMain.handle('get-file-blame', async (event, { prNumber, filePath }) => {
+  const repoPath = path.join(app.getPath('home'), 'Website-Toolbox');
+  try {
+    const headSha = await execPromise(
+      `gh pr view ${prNumber} --repo ${appConfig.repoOwner || 'webtoolbox'}/${appConfig.repoName || 'Website-Toolbox'} --json headRefOid --jq '.headRefOid'`
+    );
+    const stdout = await execPromise(
+      `git blame --porcelain ${headSha} -- "${filePath}"`,
+      { cwd: repoPath }
+    );
+    // Parse porcelain blame output
+    const blameMap = {};
+    const lines = stdout.split('\n');
+    let currentSha = null;
+    let lineNum = 0;
+    for (const line of lines) {
+      if (/^[0-9a-f]{40}/.test(line)) {
+        currentSha = line.substring(0, 7);
+      }
+      if (line.startsWith('\t')) {
+        lineNum++;
+        blameMap[lineNum] = currentSha;
+      }
+    }
+    return blameMap;
+  } catch (err) {
+    console.error('[blame] failed:', err.message);
+    return {};
+  }
+});
+
 ipcMain.handle('get-config', async () => ({
   chatId: aiChatId,
   prNumber: cliPrNumber,

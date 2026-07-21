@@ -76,6 +76,15 @@
     #btn-file-filter:hover { background: #30363d; }
     #btn-file-filter.active { background: #388bfd; color: #fff; border-color: #388bfd; }
 
+    /* Commits button */
+    #btn-commits {
+      background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 4px 6px; border-radius: 4px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    #btn-commits:hover { background: #30363d; }
+
     /* File filter dropdown */
     #file-filter-dropdown {
       display: none; position: fixed; z-index: 1001;
@@ -279,6 +288,62 @@
     .file-comment-marker .btn-delete { color: #f85149 !important; }
     .file-comment-marker.ai-tagged { border-left-color: #8957e5; }
 
+    /* PR URL link */
+    .pr-url-link {
+      color: #58a6ff; text-decoration: none; font-size: 12px;
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 2px 6px; border-radius: 4px; transition: background 0.15s;
+    }
+    .pr-url-link:hover { background: #1c2128; text-decoration: underline; }
+
+    /* Commits panel */
+    #commits-panel {
+      display: none; position: fixed; z-index: 1001;
+      background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      max-height: 400px; min-width: 380px; max-width: 500px; overflow-y: auto;
+      padding: 0;
+    }
+    #commits-panel.open { display: block; }
+    #commits-panel .commits-header {
+      padding: 10px 14px; font-size: 13px; color: #c9d1d9; font-weight: 600;
+      border-bottom: 1px solid #21262d; position: sticky; top: 0;
+      background: #161b22; display: flex; justify-content: space-between; align-items: center;
+    }
+    #commits-panel .commit-item {
+      padding: 8px 14px; border-bottom: 1px solid #21262d;
+      transition: background 0.1s; cursor: pointer;
+    }
+    #commits-panel .commit-item:hover { background: #1c2128; }
+    #commits-panel .commit-item:last-child { border-bottom: none; }
+    #commits-panel .commit-sha {
+      color: #58a6ff; font-family: monospace; font-size: 12px; font-weight: 600;
+    }
+    #commits-panel .commit-message {
+      color: #c9d1d9; font-size: 13px; margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    #commits-panel .commit-meta {
+      color: #8b949e; font-size: 11px; margin-top: 2px;
+    }
+    #commits-panel .commits-loading {
+      padding: 20px; text-align: center; color: #8b949e; font-size: 13px;
+    }
+
+    /* Commit tooltip on line numbers */
+    .commit-tooltip {
+      position: fixed; z-index: 2000;
+      background: #1c2128; border: 1px solid #30363d; border-radius: 6px;
+      padding: 8px 12px; max-width: 350px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      pointer-events: none; font-size: 12px;
+    }
+    .commit-tooltip .tt-sha { color: #58a6ff; font-family: monospace; font-weight: 600; }
+    .commit-tooltip .tt-message { color: #c9d1d9; margin-top: 2px; }
+    .commit-tooltip .tt-author { color: #8b949e; margin-top: 2px; }
+
+    .line-number-hover { background: #1c2128; cursor: help; }
+
     /* Shortcut hints */
     .shortcut-hint {
       font-size: 11px; color: #484f58; font-weight: normal; margin-left: 6px;
@@ -354,6 +419,13 @@
           <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>
         </svg>
       </button>
+      <button id="btn-commits" title="View commits" style="display:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="4"/>
+          <line x1="1.05" y1="12" x2="7" y2="12"/>
+          <line x1="17.01" y1="12" x2="22.96" y2="12"/>
+        </svg>
+      </button>
     </div>
     <button id="btn-comment" style="display:none" title="Cmd+Shift+C">Comment</button>
     <button id="btn-request-changes" style="display:none" title="Cmd+Shift+R">Request Changes</button>
@@ -383,6 +455,14 @@
       <button id="filter-select-none">None</button>
       <button id="filter-apply" class="btn-apply">Apply</button>
     </div>
+  </div>
+
+  <div id="commits-panel">
+    <div class="commits-header">
+      <span>Commits</span>
+      <span id="commits-count" style="font-size:11px;color:#8b949e"></span>
+    </div>
+    <div class="commits-loading">Loading commits...</div>
   </div>
 
   <div id="content">
