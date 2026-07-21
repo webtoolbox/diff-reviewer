@@ -42,14 +42,15 @@
     #btn-request-changes .badge { background: rgba(255,255,255,0.25); color: #fff; }
     #btn-comment .badge { background: #58a6ff; color: #0d1117; }
 
-    /* Export / share icon — no background, iOS style */
+    /* Export / share icon */
     #btn-export {
-      background: transparent !important; border: none !important;
-      padding: 4px !important; cursor: pointer; display: flex;
-      align-items: center; justify-content: center;
+      background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 4px 6px; border-radius: 4px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
     }
-    #btn-export:hover { opacity: 0.7; }
-    #btn-export svg { width: 18px; height: 18px; fill: #8b949e; }
+    #btn-export:hover { background: #30363d; }
+    #btn-export svg { width: 14px; height: 14px; fill: none; stroke: #c9d1d9; }
 
     /* PR number input */
     #pr-number-wrapper { display: flex; align-items: center; gap: 4px; }
@@ -65,6 +66,15 @@
       background: #21262d; color: #c9d1d9; position: relative;
     }
     #btn-pr-list:hover { background: #30363d; }
+
+    /* PR new window button */
+    #btn-pr-new-window {
+      background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 4px 6px; border-radius: 4px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    #btn-pr-new-window:hover { background: #30363d; }
 
     /* File filter button */
     #btn-file-filter {
@@ -288,6 +298,28 @@
     .file-comment-marker .btn-delete { color: #f85149 !important; }
     .file-comment-marker.ai-tagged { border-left-color: #8957e5; }
 
+    /* PR info bar layout */
+    .pr-title-line {
+      font-size: 14px; color: #c9d1d9; line-height: 1.3;
+    }
+    .pr-author-line {
+      font-size: 12px; color: #8b949e; margin-top: 1px;
+    }
+    .pr-author-line strong { color: #c9d1d9; }
+    .pr-subtitle-line {
+      display: flex; justify-content: space-between; align-items: center;
+      font-size: 12px; color: #8b949e; margin-top: 2px; gap: 12px;
+    }
+    .pr-subtitle-left {
+      display: flex; align-items: center; gap: 6px;
+    }
+    .pr-subtitle-right {
+      color: #8b949e; text-align: right; white-space: nowrap;
+    }
+    .pr-number-label {
+      font-weight: 600; color: #8b949e;
+    }
+
     /* PR URL link */
     .pr-url-link {
       color: #58a6ff; text-decoration: none; font-size: 12px;
@@ -339,7 +371,7 @@
       pointer-events: none; font-size: 12px;
     }
     .commit-tooltip .tt-sha { color: #58a6ff; font-family: monospace; font-weight: 600; }
-    .commit-tooltip .tt-message { color: #c9d1d9; margin-top: 2px; }
+    .commit-tooltip .tt-message { color: #c9d1d9; margin-top: 4px; white-space: pre-wrap; line-height: 1.4; }
     .commit-tooltip .tt-author { color: #8b949e; margin-top: 2px; }
 
     .line-number-hover { background: #1c2128; cursor: help; }
@@ -392,6 +424,10 @@
 
     /* File list */
     .d2h-file-list-wrapper { margin-bottom: 10px; }
+    .d2h-review-info {
+      font-size: 12px; color: #8b949e;
+      margin-left: auto; padding-left: 16px;
+    }
     .d2h-file-list { max-height: 200px; overflow-y: auto; }
     .d2h-file-list::-webkit-scrollbar { width: 6px; }
     .d2h-file-list::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
@@ -408,12 +444,16 @@
 </head>
 <body>
   <div id="review-bar">
-    <button id="btn-open">Open Diff</button>
     <div class="pr-info" id="pr-info">No diff loaded</div>
     <div id="pr-number-wrapper">
       <label for="pr-number" style="font-size:12px;color:#8b949e;margin-right:4px">PR #</label>
       <input type="text" id="pr-number" placeholder="#" title="Enter PR number and press Enter to load">
       <button id="btn-pr-list" title="List PRs pending review">▾</button>
+      <button id="btn-pr-new-window" title="Open PR in new window" style="display:none">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
+        </svg>
+      </button>
       <button id="btn-file-filter" title="Filter by file extension">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/>
@@ -431,8 +471,8 @@
     <button id="btn-request-changes" style="display:none" title="Cmd+Shift+R">Request Changes</button>
     <button id="btn-approve" style="display:none" title="Cmd+Shift+A">Approve</button>
     <button id="btn-export" style="display:none" title="Export review as .md file">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path d="M16 5l-1.42 1.42-1.59-1.59V16h-1.98V4.83L9.42 6.42 8 5l4-4 4 4zm4 18H4v-2h16v2z"/>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
       </svg>
     </button>
     <span id="comment-nav" style="display:none">

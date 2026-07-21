@@ -630,7 +630,59 @@ function updateFileCommentCount(fileName) {
   });
 }
 
-// ===================== SUBMIT REVIEW =====================
+// ===================== SUBMIT REVIEW
+
+// Compute diff line positions for GitHub review comments.
+// Returns a map of "file:line:side" -> diff position (1-indexed).
+function computeDiffPositions() {
+  if (!currentDiff) return {};
+  const map = {};
+  let currentFile = null;
+  let position = 0;
+  let leftLine = 0;
+  let rightLine = 0;
+  const lines = currentDiff.split('\n');
+  let inHeaders = false;
+
+  for (const line of lines) {
+    if (line.startsWith('diff --git')) {
+      const match = line.match(/b\/(.+)$/);
+      if (match) {
+        currentFile = match[1];
+        inHeaders = true;
+        position = 0;
+        leftLine = 0;
+        rightLine = 0;
+      }
+    } else if (inHeaders && (line.startsWith('---') || line.startsWith('+++') || line.startsWith('index'))) {
+      continue;
+    } else if (line.startsWith('@@')) {
+      inHeaders = false;
+      const match = line.match(/@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+      if (match) {
+        leftLine = parseInt(match[1], 10);
+        rightLine = parseInt(match[3], 10);
+      }
+    } else if (currentFile && !inHeaders) {
+      if (line.startsWith('-')) {
+        position++;
+        map[`${currentFile}:${leftLine}:LEFT`] = position;
+        leftLine++;
+      } else if (line.startsWith('+')) {
+        position++;
+        map[`${currentFile}:${rightLine}:RIGHT`] = position;
+        rightLine++;
+      } else if (line.startsWith(' ') || line === '' || line.startsWith('\\')) {
+        position++;
+        map[`${currentFile}:${leftLine}:LEFT`] = position;
+        map[`${currentFile}:${rightLine}:RIGHT`] = position;
+        leftLine++;
+        rightLine++;
+      }
+    }
+  }
+  return map;
+}
 
 async function submitReview(eventType) {
   const prNumber = prNumberInput.value.trim();
@@ -657,6 +709,38 @@ async function submitReview(eventType) {
     btnApprove.style.opacity = '0.5';
     btnRequestChanges.style.opacity = '0.5';
     btnComment.style.opacity = '0.5';
+
+    // Submit directly to GitHub if PR number is available
+    if (review.prNumber && window.electronAPI.submitGitHubReview) {
+      prInfo.innerHTML = '<strong style="color:#58a6ff">⏳ Submitting to GitHub...</strong>';
+
+      // Compute diff positions for inline comments
+      const positionMap = computeDiffPositions();
+      const githubComments = comments
+        .filter(c => !c.isAiTagged && c.level !== 'file' && c.line && c.side)
+        .map(c => {
+          const key = `${c.file}:${c.line}:${c.side}`;
+          const position = positionMap[key];
+          return position ? { file: c.file, position, text: c.text } : null;
+        })
+        .filter(Boolean);
+
+      const result = await window.electronAPI.submitGitHubReview({
+        prNumber: review.prNumber,
+        body: review.body,
+        eventType: eventType,
+        comments: githubComments
+      });
+
+      if (result.error) {
+        prInfo.innerHTML = `<strong style="color:#f85149">GitHub submission failed:</strong> ${escapeHtml(result.error)}`;
+      } else {
+        prInfo.innerHTML = '<strong style="color:#3fb950">✓ Review submitted to GitHub</strong>';
+        if (aiCount > 0) {
+          prInfo.innerHTML += ` <span style="color:#58a6ff">(${aiCount} sent to AI)</span>`;
+        }
+      }
+    }
   } catch (err) {
     prInfo.innerHTML = `<strong style="color:#f85149">Error:</strong> ${err.message}`;
   }
@@ -664,7 +748,7 @@ async function submitReview(eventType) {
 
 // ===================== EVENT LISTENERS =====================
 
-btnOpen.addEventListener('click', async () => {
+if (btnOpen) btnOpen.addEventListener('click', async () => {
   const result = await window.electronAPI.openFile();
   if (result && result.content) {
     currentFileName = result.fileName || '';
@@ -1010,27 +1094,17 @@ async function loadPrByNumber(prNumber) {
     allExtensionsInDiff = extractExtensionsFromDiff(result.content);
     loadDiff(result.content, result.filePath);
 
-    // Update info bar with review info
-    let infoHtml = `<strong>PR #${prNumber}</strong>`;
-    if (result.reviewInfo) {
-      const date = new Date(result.reviewInfo.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      const state = result.reviewInfo.state.toLowerCase().replace('_', ' ');
-      infoHtml += ` — changes since ${date} (${state})`;
-      if (result.reviewInfo.commitMutated) {
-        infoHtml += ' *';
-      }
-    } else {
-      infoHtml += ' — full diff';
-    }
-    if (result.filesChanged) {
-      infoHtml += ` — ${result.filesChanged} file${result.filesChanged !== 1 ? 's' : ''}`;
-    }
-    prInfo.innerHTML = infoHtml;
+    // Store PR title for later use
+    currentPrTitle = result.prTitle || '';
+    currentPrNumber = prNumber;
 
     // Update title bar
-    document.title = `Diff Reviewer — PR #${prNumber}`;
+    document.title = currentPrTitle ? `${currentPrTitle} — Diff Reviewer` : `Diff Reviewer — PR #${prNumber}`;
     // Store PR number
     prNumberInput.value = prNumber;
+
+    // Build info bar
+    updatePrInfoBar(prNumber, currentPrTitle, result);
 
     // Load commits for this PR
     loadPrCommits(prNumber);
@@ -1134,8 +1208,12 @@ document.addEventListener('click', (e) => {
 });
 
 // Handle menu "Open Diff" trigger
-window.electronAPI.onTriggerOpenFile(() => {
-  btnOpen.click();
+window.electronAPI.onTriggerOpenFile(async () => {
+  const result = await window.electronAPI.openFile();
+  if (result && result.content) {
+    currentFileName = result.fileName || '';
+    loadDiff(result.content, result.filePath);
+  }
 });
 
 // ===================== FILE EXTENSION FILTER =====================
@@ -1281,6 +1359,8 @@ document.addEventListener('click', (e) => {
 // Store current diff content for re-rendering
 let currentDiffContent = null;
 let currentDiffFilePath = null;
+let currentPrTitle = '';
+let currentPrNumber = null;
 
 // Override loadDiff to store content and apply filter
 const originalLoadDiff = typeof loadDiff !== 'undefined' ? loadDiff : null;
@@ -1342,6 +1422,7 @@ if (typeof window !== 'undefined') {
 // ===================== COMMITS PANEL & PR URL =====================
 
 const btnCommits = document.getElementById('btn-commits');
+const btnPrNewWindow = document.getElementById('btn-pr-new-window');
 const commitsPanel = document.getElementById('commits-panel');
 const commitsCount = document.getElementById('commits-count');
 let commitsPanelOpen = false;
@@ -1351,6 +1432,20 @@ let blameCache = {};  // { filePath: { lineNum: sha } }
 let commitMap = {};   // { sha: commitObj }
 
 // Toggle commits panel
+// Open PR in new window
+btnPrNewWindow.addEventListener('click', async () => {
+  const prNumber = prNumberInput.value.trim();
+  if (!prNumber) return;
+  try {
+    const result = await window.electronAPI.openPrNewWindow(parseInt(prNumber, 10));
+    if (result && result.error) {
+      prInfo.innerHTML = `<strong style="color:#f85149">Error:</strong> ${result.error}`;
+    }
+  } catch (err) {
+    prInfo.innerHTML = `<strong style="color:#f85149">Error:</strong> ${err.message}`;
+  }
+});
+
 btnCommits.addEventListener('click', (e) => {
   e.stopPropagation();
   if (commitsPanelOpen) {
@@ -1436,11 +1531,9 @@ async function loadPrCommits(prNumber) {
       }
     }
 
-    // Show commits button
+    // Show commits button and new window button
     btnCommits.style.display = 'flex';
-
-    // Update PR info bar with URL link
-    updatePrInfoBar(prNumber);
+    btnPrNewWindow.style.display = 'flex';
 
     // Load blame data for files in the diff
     loadBlameData(prNumber);
@@ -1449,19 +1542,53 @@ async function loadPrCommits(prNumber) {
   }
 }
 
-// Update PR info bar to include clickable PR URL
-function updatePrInfoBar(prNumber) {
-  const currentInfo = prInfo.innerHTML;
-  if (prUrl) {
-    const linkHtml = ` <a class="pr-url-link" href="${prUrl}" title="Open PR #${prNumber} in browser">
-      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
-      </svg>
-      PR #${prNumber}
-    </a>`;
-    // Only add link if not already present
-    if (!currentInfo.includes('pr-url-link')) {
-      prInfo.innerHTML = currentInfo + linkHtml;
+// Update PR info bar — just the title, subtitle removed (PR# is in the text box)
+function updatePrInfoBar(prNumber, prTitle, result) {
+  // Title line + author/assignees line
+  let html = '';
+  if (prTitle) {
+    html += `<div class="pr-title-line"><strong>${escapeHtml(prTitle)}</strong></div>`;
+  }
+  // Second line: author + assignees
+  if (result) {
+    const parts = [];
+    if (result.prAuthor) parts.push(`by <strong>${escapeHtml(result.prAuthor)}</strong>`);
+    if (result.prAssignees && result.prAssignees.length > 0) {
+      parts.push(`→ ${result.prAssignees.map(a => escapeHtml(a)).join(', ')}`);
+    }
+    if (parts.length > 0) {
+      html += `<div class="pr-author-line">${parts.join(' ')}</div>`;
+    }
+  }
+  prInfo.innerHTML = html;
+
+  // Inject review info into the diff2html file list area (right-aligned, same row as files changed)
+  if (result) {
+    let reviewInfoText = '';
+    if (result.reviewInfo) {
+      const date = new Date(result.reviewInfo.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const state = result.reviewInfo.state.toLowerCase().replace('_', ' ');
+      reviewInfoText = `Changes since ${date} (${state})`;
+      if (result.reviewInfo.commitMutated) reviewInfoText += ' *';
+    } else {
+      reviewInfoText = 'Full diff';
+    }
+
+    // Find the file list header and add the review info on the same row
+    const fileListWrapper = document.querySelector('.d2h-file-list-wrapper');
+    if (fileListWrapper) {
+      const existing = fileListWrapper.querySelector('.d2h-review-info');
+      if (existing) existing.remove();
+
+      // Find the file list header that shows "X files changed"
+      const fileListHeader = fileListWrapper.querySelector('.d2h-file-list-header');
+      if (fileListHeader) {
+        // Add review info as a right-aligned span inside the header
+        const reviewSpan = document.createElement('span');
+        reviewSpan.className = 'd2h-review-info';
+        reviewSpan.textContent = reviewInfoText;
+        fileListHeader.appendChild(reviewSpan);
+      }
     }
   }
 }
@@ -1538,12 +1665,13 @@ function handleLineNumberHover(e) {
   const commit = commitMap[sha];
   if (!commit) return;
 
-  // Show tooltip
+  // Show tooltip with full multi-line description
   const tooltip = document.createElement('div');
   tooltip.className = 'commit-tooltip';
+  const fullMsg = escapeHtml(commit.fullMessage || commit.message).replace(/\n/g, '<br>');
   tooltip.innerHTML = `
     <div class="tt-sha">${commit.sha}</div>
-    <div class="tt-message">${escapeHtml(commit.message)}</div>
+    <div class="tt-message">${fullMsg}</div>
     <div class="tt-author">${commit.author} · ${new Date(commit.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
   `;
 

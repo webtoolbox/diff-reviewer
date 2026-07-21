@@ -651,11 +651,29 @@ ipcMain.handle('load-pr', async (event, prNumber) => {
     const result = await generateDiff(prNumber);
     const content = fs.readFileSync(result.diffPath, 'utf8');
     const fileName = `pr-${prNumber}-clean.diff`;
+
+    // Fetch PR title, author, and assignees
+    const owner = appConfig.repoOwner || 'webtoolbox';
+    const repo = appConfig.repoName || 'Website-Toolbox';
+    let prTitle = '', prAuthor = '', prAssignees = [];
+    try {
+      const prJson = await execPromise(
+        `gh pr view ${prNumber} --repo ${owner}/${repo} --json title,author,assignees`
+      );
+      const prData = JSON.parse(prJson);
+      prTitle = prData.title || '';
+      prAuthor = prData.author?.login || '';
+      prAssignees = (prData.assignees || []).map(a => a.login).filter(a => a !== prAuthor);
+    } catch {}
+
     return {
       content,
       fileName,
       filePath: result.diffPath,
       prNumber,
+      prTitle,
+      prAuthor,
+      prAssignees,
       reviewInfo: result.reviewInfo,
       filesChanged: result.filesChanged
     };
@@ -749,6 +767,58 @@ ipcMain.handle('save-review', async (event, review) => {
   sendAiMessage(summary);
 
   return outputPath;
+});
+
+// Submit review directly to GitHub via gh CLI
+ipcMain.handle('submit-github-review', async (event, { prNumber, body, eventType, comments }) => {
+  const owner = appConfig.repoOwner;
+  const repo = appConfig.repoName;
+  if (!owner || !repo) {
+    return { error: 'repoOwner and repoName must be configured in config.json' };
+  }
+  if (!prNumber) {
+    return { error: 'PR number is required' };
+  }
+
+  // Map event types to GitHub API values
+  const eventMap = {
+    'approve': 'APPROVE',
+    'request_changes': 'REQUEST_CHANGES',
+    'comment': 'COMMENT'
+  };
+  const ghEvent = eventMap[eventType] || 'COMMENT';
+
+  // Build inline comments array (only those with valid diff positions)
+  const ghComments = (comments || [])
+    .filter(c => c.position && c.file && c.text)
+    .map(c => ({
+      path: c.file,
+      position: c.position,
+      body: c.text
+    }));
+
+  const payload = { body: body || '', event: ghEvent };
+  if (ghComments.length > 0) {
+    payload.comments = ghComments;
+  }
+
+  // Write payload to temp file for gh api --input
+  const tmpPath = path.join(getGeneratedDir(), `review-payload-${Date.now()}.json`);
+  fs.writeFileSync(tmpPath, JSON.stringify(payload, null, 2));
+
+  try {
+    const stdout = await execPromise(
+      `gh api "repos/${owner}/${repo}/pulls/${prNumber}/reviews" --method POST --input "${tmpPath}"`
+    );
+    const result = JSON.parse(stdout || '{}');
+    console.log('[github-review] submitted successfully:', result.id);
+    return { success: true, reviewId: result.id, htmlUrl: result.html_url };
+  } catch (err) {
+    console.error('[github-review] submission failed:', err.message);
+    return { error: err.message };
+  } finally {
+    try { fs.unlinkSync(tmpPath); } catch {}
+  }
 });
 
 ipcMain.handle('export-markdown', async (event, { markdown, defaultName }) => {
