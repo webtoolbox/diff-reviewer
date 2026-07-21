@@ -95,7 +95,9 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 
 ## Installation
 
-### From Source
+### macOS
+
+#### From Source
 ```bash
 git clone https://github.com/webtoolbox/diff-reviewer.git
 cd diff-reviewer
@@ -103,12 +105,34 @@ npm install
 npm start
 ```
 
-### Build .app Bundle
+#### Build .app Bundle
 ```bash
 npm run build
 # Creates Diff Reviewer.app in dist/mac-arm64/
 # Copy to /Applications/
 ```
+
+### Linux
+
+```bash
+git clone https://github.com/webtoolbox/diff-reviewer.git
+cd diff-reviewer
+npm install
+npm start
+```
+
+#### Prerequisites
+- **Node.js** 18+ and npm
+- **git** and **gh** (GitHub CLI) — `gh` must be authenticated (`gh auth login`)
+
+#### Build Linux Package (optional)
+```bash
+npx electron-builder --linux
+# Creates .deb, .rpm, or .AppImage in dist/
+```
+
+#### Data Storage (Linux)
+App data is stored in `~/.config/diff-reviewer/` instead of the macOS path.
 
 ## Configuration
 
