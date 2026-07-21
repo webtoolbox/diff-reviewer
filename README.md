@@ -1,6 +1,6 @@
 # Diff Reviewer
 
-A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, file-level comments, AI agent integration, and S3 image upload support.
+A macOS desktop app that speeds up GitHub PR reviews by loading diffs immediately, filtering by file type, excluding merge commits, and auto-loading the next PR when you're done. Includes AI agent integration for tagging an agent directly in review comments and automated agent rule proposals based on your feedback.
 
 ![Main Diff View](screenshots/main-diff-view.jpg)
 
