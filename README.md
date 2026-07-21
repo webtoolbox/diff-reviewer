@@ -4,6 +4,20 @@ A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, fi
 
 ![Main Diff View](screenshots/main-diff-view.jpg)
 
+## Why Diff Reviewer?
+
+Reviewing PRs on GitHub means clicking into a PR, reading the description, scanning commits and comments, then navigating to the Files Changed tab before you can even see the diff. Diff Reviewer skips all of that — it loads the diff immediately and automatically moves to the next PR when you're done.
+
+**Faster review workflow**: Open the app and start reviewing right away. No multi-step navigation. When you finish one PR, the next one loads automatically.
+
+**No merge commit noise**: Diffs automatically exclude merge commits, so you only see the actual code changes. GitHub's diff can sometimes be cluttered with merge commit diffs that make it harder to review.
+
+**Line-level commit attribution**: Hover over any line to see exactly which commit changed it and why. This makes it easy to trace the history of a specific change without digging through git blame.
+
+**AI agent integration**: Tag @Hermes in any comment to message an AI agent directly from the review. The agent can help with code analysis, answer questions, or assist with changes.
+
+**Automated agent rule proposals**: After submitting a review, the app can analyze your feedback against the repo's AGENTS.md rules and propose new rules when needed. This replaces a workflow that was previously done manually — reviewing feedback, identifying gaps in agent rules, and updating the rule files.
+
 ## Features
 
 ### Core Review Features
