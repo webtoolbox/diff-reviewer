@@ -1,38 +1,86 @@
 # Diff Reviewer
 
-A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, file-level comments, auto-save, and AI agent integration. Built with Electron and [diff2html](https://github.com/rtfpessoa/diff2html).
+A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, file-level comments, AI agent integration, and S3 image upload support.
 
-## Install
+## Features
 
+### Core Review Features
+- **Side-by-side diff viewing** powered by diff2html
+- **Line-level commenting** on both left (old) and right (new) sides
+- **File-level comments** for overall feedback on a file
+- **Review body** with optional summary text
+- **Three review types**: Comment, Request Changes, Approve
+- **Auto-save drafts** — comments survive app restarts
+- **Export as markdown** with code context and images
+
+### AI Agent Integration
+- Tag `@Hermes` (or custom prefix) in comments to message an AI agent
+- AI-tagged comments are sent separately from PR review comments
+- Full context sent: file path, line number, side, code snippet, comment text
+- Works with or without a specific chat session (creates new session if needed)
+
+### Image Support
+- **Paste images** (Cmd+V) into comment forms
+- **Drag and drop** image files onto comment forms
+- **S3 upload** — images uploaded to S3 for inline GitHub markdown
+- **Local storage** — images saved alongside reviews for offline access
+
+### PR Management
+- **PR dropdown** — lists open PRs pending your review
+- **Configurable filtering** — by review requested, title contains
+- **New window** — open multiple PRs in separate windows simultaneously
+- **PR number input** — type a PR number and press Enter to load
+
+### Multi-Window Support
+- **File > New Window** (Cmd+N) — open blank Diff Reviewer windows
+- **File > Open Diff** (Cmd+O) — open .diff files
+- Each window is independent with its own PR/comments
+- Open PRs in new windows via the ↗ icon in the dropdown
+
+### macOS Integration
+- **Dock icon** with custom diff-style icon
+- **File association** — .diff and .patch files open with Diff Reviewer
+- **Application menu** with standard macOS shortcuts
+- **.app bundle** — install to /Applications like any native app
+
+### Data Management
+- **Persistent storage** — all data in `~/Library/Application Support/diff-reviewer/`
+  - `reviews/` — submitted review JSONs
+  - `drafts/` — auto-saved comment drafts
+  - `generated/` — generated PR diff files
+  - `images/` — attached images
+- **Automatic cleanup** — delete old files based on configurable retention period
+- **Default retention**: 6 months (180 days)
+
+## Installation
+
+### From Source
 ```bash
 git clone https://github.com/webtoolbox/diff-reviewer.git
 cd diff-reviewer
 npm install
+npm start
 ```
 
-## Usage
-
+### Build .app Bundle
 ```bash
-# Basic — open a diff file
-npx electron . /path/to/file.diff
-
-# With AI agent integration
-npx electron . \
-  --chat-id "telegram:Sandeep / topic 16039" \
-  --pr-number 6690 \
-  /tmp/pr-6690-clean.diff
+npm run build
+# Creates Diff Reviewer.app in dist/mac-arm64/
+# Copy to /Applications/
 ```
-
-### Command-Line Options
-
-| Flag | Description |
-|------|-------------|
-| `--chat-id <target>` | Chat target for AI agent notifications on submit |
-| `--pr-number <n>` | Pre-fill the PR number. Also auto-detected from filename |
 
 ## Configuration
 
-Edit `config.json` to customize the AI agent integration:
+### Config Files
+
+The app uses a two-tier config system:
+
+1. **Public config** (in repo): `config.json` — generic defaults, committed to GitHub
+2. **Private config** (user-specific): `~/.config/diff-reviewer/config.json` — your personal settings
+
+Private config overrides public config. Your private config should NOT be committed.
+
+### Config Options
 
 ```json
 {
@@ -40,132 +88,132 @@ Edit `config.json` to customize the AI agent integration:
   "aiSendArgs": ["send", "--to"],
   "aiChatId": null,
   "aiTagPrefix": "@Hermes",
-  "reviewSaveDir": "~/.hermes/profiles/wt/diff-reviews/pending"
+  "reviewSaveDir": "",
+  "prFilter": {
+    "reviewRequested": true,
+    "titleContains": "for review"
+  },
+  "repoOwner": "",
+  "repoName": "",
+  "imageUpload": {
+    "enabled": false,
+    "provider": "s3",
+    "s3Bucket": "",
+    "s3Prefix": "",
+    "s3Acl": "public-read",
+    "awsProfile": "default",
+    "awsRegion": "us-east-1"
+  },
+  "cleanup": {
+    "enabled": true,
+    "retentionDays": 180,
+    "runOnStartup": true
+  }
 }
 ```
 
-| Field | Description |
-|-------|-------------|
-| `aiCommand` | CLI command for the AI agent (e.g., `hermes`, `claude`, `cursor`) |
-| `aiSendArgs` | Arguments before the chat-id and message |
-| `aiChatId` | Default chat target (overridden by `--chat-id`) |
-| `aiTagPrefix` | Tag prefix that triggers AI messages (e.g., `@Hermes`, `@Claude`) |
-| `reviewSaveDir` | Directory for saved review JSON files |
-
-## Features
-
-### Commenting
-- **Line-level comments** — hover any line, click `+` to add a comment
-- **File-level comments** — click the 💬 button on any file header
-- **Multiple comments per line** — add as many comments as needed on the same line
-- **Both sides** — comment on old (left) and new (right) code
-- **Edit/Delete** — edit or delete any comment after submitting
-
-### AI Integration
-- **@Hermes tag** — start a comment with `@Hermes` (or your configured prefix) to send it directly to the AI agent
-- **Configurable CLI** — works with any AI agent (Hermes, Claude, Cursor, etc.)
-- **Excluded from review** — @Hermes-tagged comments are sent to AI, not included in PR review
-
-### Auto-Save & Resume
-- **Auto-save on every change** — comments are saved to a draft file automatically
-- **Resume on restart** — reopen the same diff file and your comments are restored
-- **Crash-safe** — if the app crashes or computer restarts, your work is preserved
-
-### Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Cmd+Shift+A` | Approve PR |
-| `Cmd+Shift+R` | Request Changes |
-| `Cmd+Shift+C` | Submit as Comment |
-| `Cmd+Enter` | Submit current comment form |
-| `Cmd+Shift+Enter` | Submit review (when no comment form open) |
-| `Esc` | Cancel/close comment form |
-
-All buttons show their shortcut keys in tooltips on hover.
-
-### UI
-- **Side-by-side diff** with syntax highlighting (diff2html)
-- **Dark theme** matching GitHub's dark mode
-- **Scrollable file list** — collapses automatically for large PRs
-- **Drag & drop** — drop `.diff` files onto the window
-- **Inline comment forms** — appear between lines, never block code
-- **File-level comment button** — 💬 on each file header with comment count badge
-
-## @Hermes Tag
-
-When you start a comment with `@Hermes` (or whatever `aiTagPrefix` is set to in `config.json`):
-
-1. The comment is **sent to the AI agent** via the configured CLI command
-2. The comment is **excluded from the PR review** — it won't be saved in the review JSON
-3. The comment shows a **purple badge** in the UI to indicate it's an AI message
-4. You can use this to ask questions, request explanations, or get suggestions from the AI
-
-Example: `@Hermes Why was this change needed?` sends the question to the AI agent.
-
-## How It Works
-
-1. Open a `.diff` or `.patch` file in the app
-2. Browse the side-by-side diff with syntax highlighting
-3. Hover over any line to reveal the `+` comment button
-4. Click to add a comment — form appears inline between lines
-5. Click the 💬 on a file header to add a file-level comment
-6. Add multiple comments per line, tag with `@Hermes` for AI messages
-7. Edit or delete any comment
-8. Add an optional review summary
-9. Use keyboard shortcuts or click **Approve**, **Request Changes**, or **Comment** to submit
-
-On submit, the app:
-- Saves PR comments as JSON to the configured `reviewSaveDir`
-- Sends `@Hermes`-tagged messages to the AI agent via CLI
-- Sends a summary notification to the AI agent
-- Deletes the draft file (review is complete)
-
-## Review JSON Format
+### Example Private Config (for Website Toolbox)
 
 ```json
 {
-  "type": "request_changes",
-  "prNumber": 6690,
-  "body": "Overall review comment",
-  "comments": [
-    {
-      "file": "modules/Members/Pages.pm",
-      "line": "42",
-      "side": "RIGHT",
-      "text": "Use a class selector instead of attribute selector.",
-      "level": "line"
-    },
-    {
-      "file": "modules/Members/Pages.pm",
-      "line": null,
-      "side": null,
-      "text": "This file needs refactoring.",
-      "level": "file"
-    }
-  ],
-  "timestamp": "2026-07-21T07:44:33.089Z"
+  "repoOwner": "webtoolbox",
+  "repoName": "Website-Toolbox",
+  "prFilter": {
+    "reviewRequested": true,
+    "titleContains": "for review"
+  },
+  "imageUpload": {
+    "enabled": true,
+    "s3Bucket": "pubsharefiles",
+    "awsProfile": "mfa",
+    "awsRegion": "us-east-1"
+  }
 }
 ```
 
-Note: `@Hermes`-tagged comments are filtered out before saving.
+## Usage
 
-## Testing
+### Launching
+- **From dock**: Click the Diff Reviewer icon
+- **From Applications**: Double-click Diff Reviewer.app
+- **From terminal**: `npx electron . /path/to/file.diff`
+- **With AI session**: `npx electron . --chat-id "telegram:user / topic 12345" /path/to/file.diff`
+- **With PR number**: `npx electron . --pr-number 6690 /path/to/file.diff`
 
-```bash
-# Run the automated test suite (36 tests)
-npx electron test.js /path/to/test.diff
+### Opening PRs
+1. Click the ▾ button next to the PR number field
+2. Select a PR from the dropdown (filtered by your config)
+3. Or type a PR number and press Enter
+
+### Adding Comments
+1. Hover over a line and click the green + button
+2. Type your comment (tag @Hermes to message AI)
+3. Optionally paste or drag an image
+4. Click "Add Comment" or press Cmd+Enter
+
+### File-Level Comments
+1. Click the 💬 button next to a file name in the diff header
+2. Add your comment about the overall file
+
+### Reviewing
+1. Add your comments as above
+2. Optionally add a review summary in the text area at the bottom
+3. Click "Comment", "Request Changes", or "Approve"
+4. AI-tagged comments are sent separately
+
+### Navigation
+- **Cmd+[** / **Cmd+]**: Jump between comments
+- **Cmd+Shift+Enter**: Submit review
+- **Cmd+N**: New window
+- **Cmd+O**: Open diff file
+
+### Exporting
+- Click the 📤 icon in the top bar to export as markdown
+- Images are uploaded to S3 (if configured) and included as URLs
+
+## Data Storage
+
+All app data is stored in:
+```
+~/Library/Application Support/diff-reviewer/
+├── reviews/          # Submitted review JSONs
+├── drafts/           # Auto-saved comment drafts
+├── generated/        # Generated PR diff files
+└── images/           # Attached images
 ```
 
-## Dependencies
+Old files are automatically cleaned up based on the `cleanup.retentionDays` config (default: 180 days / 6 months).
 
-- [Electron](https://www.electronjs.org/) — desktop app framework
-- [diff2html](https://github.com/rtfpessoa/diff2html) — diff parsing and rendering
+## Development
 
-## Contributing
+### Running Tests
+```bash
+npm test
+```
 
-We welcome pull requests! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+### Building
+```bash
+npm run build        # Build .app bundle
+npm run build:dir    # Build unpacked directory
+```
+
+### Project Structure
+```
+├── main.js           # Electron main process
+├── preload.js        # IPC bridge
+├── renderer.js       # UI logic
+├── index.html        # UI layout and styles
+├── test.js           # Test suite
+├── config.json       # Public config
+├── icon.png          # App icon
+├── package.json      # Dependencies and build config
+└── README.md         # This file
+```
 
 ## License
 
-[MIT](LICENSE)
+MIT License - see [LICENSE](LICENSE) for details.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

@@ -126,6 +126,50 @@ function getGeneratedDir() {
   return dir;
 }
 
+// Cleanup old files based on retention policy
+function cleanupOldFiles() {
+  const cleanup = appConfig.cleanup || {};
+  if (!cleanup.enabled) {
+    console.log('[cleanup] Disabled');
+    return;
+  }
+
+  const retentionDays = cleanup.retentionDays || 180;
+  const cutoffMs = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
+  let deletedCount = 0;
+
+  const dirsToClean = [
+    { dir: getReviewDir(), label: 'reviews' },
+    { dir: getDraftsDir(), label: 'drafts' },
+    { dir: getGeneratedDir(), label: 'generated' },
+    { dir: path.join(getReviewDir(), 'images'), label: 'images' }
+  ];
+
+  for (const { dir, label } of dirsToClean) {
+    if (!fs.existsSync(dir)) continue;
+
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      const filePath = path.join(dir, file);
+      try {
+        const stat = fs.statSync(filePath);
+        if (stat.isFile() && stat.mtimeMs < cutoffMs) {
+          fs.unlinkSync(filePath);
+          deletedCount++;
+        }
+      } catch (err) {
+        console.error(`[cleanup] Error processing ${filePath}:`, err.message);
+      }
+    }
+  }
+
+  if (deletedCount > 0) {
+    console.log(`[cleanup] Deleted ${deletedCount} files older than ${retentionDays} days`);
+  } else {
+    console.log(`[cleanup] No files older than ${retentionDays} days to delete`);
+  }
+}
+
 // Draft management
 function getDraftPath(diffFilePath) {
   const draftDir = getDraftsDir();
@@ -348,6 +392,12 @@ function createWindow(options = {}) {
 // App lifecycle
 app.whenReady().then(() => {
   createMenu();
+
+  // Run cleanup on startup if configured
+  const cleanup = appConfig.cleanup || {};
+  if (cleanup.runOnStartup !== false) {
+    cleanupOldFiles();
+  }
 
   // Create initial window with CLI args
   const firstWindowOptions = {};

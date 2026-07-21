@@ -3,7 +3,7 @@
   "aiSendArgs": ["send", "--to"],
   "aiChatId": null,
   "aiTagPrefix": "@Hermes",
-  "reviewSaveDir": "~/.hermes/profiles/wt/diff-reviews/pending",
+  "reviewSaveDir": "",
   "prFilter": {
     "reviewRequested": true,
     "titleContains": "for review"
@@ -18,5 +18,10 @@
     "s3Acl": "public-read",
     "awsProfile": "default",
     "awsRegion": "us-east-1"
+  },
+  "cleanup": {
+    "enabled": true,
+    "retentionDays": 180,
+    "runOnStartup": true
   }
 }
