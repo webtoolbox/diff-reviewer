@@ -23,6 +23,7 @@ function loadConfig() {
     repoName: '',
     repoPath: '',
     editorCommand: 'code',
+    contextLines: 5,
     imageUpload: {
       enabled: false,
       provider: 's3',
@@ -437,8 +438,9 @@ async function generateDiff(prNumber) {
   }
 
   // Use three-dot diff against master to exclude merge noise
+  const contextLines = appConfig.contextLines || 5;
   const diffOut = await execPromise(
-    `git diff origin/master...${headSha} -- ${codeFiles.map(f => `"${f}"`).join(' ')}`,
+    `git diff origin/master...${headSha} --unified=${contextLines} -- ${codeFiles.map(f => `"${f}"`).join(' ')}`,
     { cwd: repoPath }
   );
 

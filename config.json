@@ -12,6 +12,7 @@
   "repoName": "",
   "repoPath": "",
   "editorCommand": "code",
+  "contextLines": 5,
   "diff": {
     "mode": "since-review",
     "excludeMerges": true,
