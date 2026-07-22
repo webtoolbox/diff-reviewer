@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   loadDraft: (filePath) => ipcRenderer.invoke('load-draft', filePath),
   deleteDraft: (filePath) => ipcRenderer.invoke('delete-draft', filePath),
   getConfig: () => ipcRenderer.invoke('get-config'),
+  savePreferences: (prefs) => ipcRenderer.invoke('save-preferences', prefs),
   exportMarkdown: (data) => ipcRenderer.invoke('export-markdown', data),
   saveImage: (data) => ipcRenderer.invoke('save-image', data),
   loadPr: (prNumber) => ipcRenderer.invoke('load-pr', prNumber),
@@ -22,5 +23,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deletePrFiles: (prNumber) => ipcRenderer.invoke('delete-pr-files', prNumber),
   getNextPr: (prNumber) => ipcRenderer.invoke('get-next-pr', prNumber),
   onLoadDiff: (callback) => ipcRenderer.on('load-diff', (event, data) => callback(data)),
-  onTriggerOpenFile: (callback) => ipcRenderer.on('trigger-open-file', () => callback())
+  onTriggerOpenFile: (callback) => ipcRenderer.on('trigger-open-file', () => callback()),
+  onOpenPreferences: (callback) => ipcRenderer.on('open-preferences', () => callback())
 });

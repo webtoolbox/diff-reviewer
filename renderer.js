@@ -1940,4 +1940,119 @@ async function cleanupAndLoadNext() {
   }
 }
 
+// ===================== PREFERENCES DIALOG =====================
+
+const prefsOverlay = document.getElementById('prefs-overlay');
+const btnPrefsClose = document.getElementById('btn-prefs-close');
+const btnPrefsCancel = document.getElementById('btn-prefs-cancel');
+const btnPrefsSave = document.getElementById('btn-prefs-save');
+const prefsSaved = document.getElementById('prefs-saved');
+
+// Preference field IDs and their config paths
+const prefFields = [
+  { id: 'pref-repo-owner', key: 'repoOwner', type: 'text' },
+  { id: 'pref-repo-name', key: 'repoName', type: 'text' },
+  { id: 'pref-repo-path', key: 'repoPath', type: 'text' },
+  { id: 'pref-ai-command', key: 'aiCommand', type: 'text' },
+  { id: 'pref-ai-tag', key: 'aiTagPrefix', type: 'text' },
+  { id: 'pref-editor-cmd', key: 'editorCommand', type: 'text' },
+  { id: 'pref-context-lines', key: 'contextLines', type: 'number' },
+  { id: 'pref-exclude-merges', key: 'diff.excludeMerges', type: 'checkbox' },
+  { id: 'pref-img-enabled', key: 'imageUpload.enabled', type: 'checkbox' },
+  { id: 'pref-s3-bucket', key: 'imageUpload.s3Bucket', type: 'text' },
+  { id: 'pref-aws-profile', key: 'imageUpload.awsProfile', type: 'text' },
+  { id: 'pref-aws-region', key: 'imageUpload.awsRegion', type: 'text' },
+  { id: 'pref-cleanup-enabled', key: 'cleanup.enabled', type: 'checkbox' },
+  { id: 'pref-retention-days', key: 'cleanup.retentionDays', type: 'number' },
+  { id: 'pref-rules-enabled', key: 'rules.enabled', type: 'checkbox' }
+];
+
+function getNestedValue(obj, path) {
+  return path.split('.').reduce((o, k) => (o && o[k] !== undefined) ? o[k] : '', obj);
+}
+
+function setNestedValue(obj, path, value) {
+  const keys = path.split('.');
+  let current = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    if (!current[keys[i]] || typeof current[keys[i]] !== 'object') {
+      current[keys[i]] = {};
+    }
+    current = current[keys[i]];
+  }
+  current[keys[keys.length - 1]] = value;
+}
+
+async function openPreferences() {
+  try {
+    const config = await window.electronAPI.getConfig();
+
+    for (const field of prefFields) {
+      const el = document.getElementById(field.id);
+      if (!el) continue;
+      const value = getNestedValue(config, field.key);
+      if (field.type === 'checkbox') {
+        el.checked = !!value;
+      } else {
+        el.value = value !== undefined && value !== null ? value : '';
+      }
+    }
+
+    prefsOverlay.style.display = 'flex';
+  } catch (err) {
+    console.error('[prefs] load failed:', err);
+  }
+}
+
+function closePreferences() {
+  prefsOverlay.style.display = 'none';
+}
+
+async function savePreferences() {
+  const prefs = {};
+
+  for (const field of prefFields) {
+    const el = document.getElementById(field.id);
+    if (!el) continue;
+    let value;
+    if (field.type === 'checkbox') {
+      value = el.checked;
+    } else if (field.type === 'number') {
+      value = parseInt(el.value, 10);
+      if (isNaN(value)) continue;
+    } else {
+      value = el.value.trim();
+    }
+    setNestedValue(prefs, field.key, value);
+  }
+
+  const result = await window.electronAPI.savePreferences(prefs);
+  if (result && result.success) {
+    // Show brief "Saved" confirmation
+    prefsSaved.classList.add('show');
+    setTimeout(() => {
+      prefsSaved.classList.remove('show');
+      closePreferences();
+    }, 1200);
+  }
+}
+
+btnPrefsClose.addEventListener('click', closePreferences);
+btnPrefsCancel.addEventListener('click', closePreferences);
+btnPrefsSave.addEventListener('click', savePreferences);
+
+// Close on overlay click (outside dialog)
+prefsOverlay.addEventListener('click', (e) => {
+  if (e.target === prefsOverlay) closePreferences();
+});
+
+// Close on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && prefsOverlay.style.display === 'flex') {
+    closePreferences();
+  }
+});
+
+// Listen for menu trigger
+window.electronAPI.onOpenPreferences(() => openPreferences());
 

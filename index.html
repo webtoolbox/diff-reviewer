@@ -577,6 +577,79 @@
       padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
     }
     .rules-btn-cancel:hover { background: #30363d; }
+
+    /* Preferences dialog */
+    .prefs-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7); z-index: 2000;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .prefs-dialog {
+      background: #161b22; border: 1px solid #30363d; border-radius: 12px;
+      width: 560px; max-width: 90vw; max-height: 85vh;
+      display: flex; flex-direction: column; overflow: hidden;
+    }
+    .prefs-header {
+      padding: 16px 20px; border-bottom: 1px solid #30363d;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .prefs-header h3 { margin: 0; font-size: 16px; color: #c9d1d9; }
+    .prefs-header .prefs-close {
+      background: none; border: none; color: #8b949e; cursor: pointer;
+      font-size: 18px; padding: 4px 8px; border-radius: 6px; transition: all 0.15s;
+    }
+    .prefs-header .prefs-close:hover { background: #21262d; color: #c9d1d9; }
+    .prefs-body {
+      flex: 1; overflow-y: auto; padding: 20px;
+    }
+    .prefs-section {
+      margin-bottom: 20px;
+    }
+    .prefs-section-title {
+      font-size: 12px; font-weight: 600; color: #58a6ff; text-transform: uppercase;
+      letter-spacing: 0.5px; margin-bottom: 12px; padding-bottom: 6px;
+      border-bottom: 1px solid #21262d;
+    }
+    .prefs-row {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 10px;
+    }
+    .prefs-row label {
+      font-size: 13px; color: #c9d1d9; min-width: 120px; flex-shrink: 0;
+    }
+    .prefs-row input[type="text"],
+    .prefs-row input[type="number"] {
+      flex: 1; background: #0d1117; border: 1px solid #30363d;
+      border-radius: 8px; color: #c9d1d9; padding: 6px 10px; font-size: 13px;
+    }
+    .prefs-row input[type="text"]:focus,
+    .prefs-row input[type="number"]:focus {
+      outline: none; border-color: #58a6ff;
+    }
+    .prefs-row input[type="number"] { width: 80px; flex: 0 0 80px; }
+    .prefs-row .checkbox-wrapper {
+      display: flex; align-items: center; gap: 8px;
+    }
+    .prefs-row input[type="checkbox"] {
+      width: 16px; height: 16px; accent-color: #58a6ff; cursor: pointer;
+    }
+    .prefs-footer {
+      padding: 12px 20px; border-top: 1px solid #30363d;
+      display: flex; justify-content: flex-end; gap: 10px; align-items: center;
+    }
+    .prefs-saved {
+      font-size: 13px; color: #3fb950; opacity: 0; transition: opacity 0.3s;
+    }
+    .prefs-saved.show { opacity: 1; }
+    .prefs-btn-save {
+      background: #238636; color: #fff; border: 1px solid #238636;
+      padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    }
+    .prefs-btn-save:hover { background: #2ea043; }
+    .prefs-btn-cancel {
+      background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    }
+    .prefs-btn-cancel:hover { background: #30363d; }
   </style>
 </head>
 <body>
@@ -668,6 +741,120 @@
       <div class="rules-footer">
         <button class="rules-btn-cancel" id="btn-rules-cancel">Cancel</button>
         <button class="rules-btn-save" id="btn-rules-save">Save Rules</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Preferences dialog (hidden by default) -->
+  <div id="prefs-overlay" class="prefs-overlay" style="display:none">
+    <div class="prefs-dialog">
+      <div class="prefs-header">
+        <h3>Preferences</h3>
+        <button class="prefs-close" id="btn-prefs-close">✕</button>
+      </div>
+      <div class="prefs-body">
+
+        <div class="prefs-section">
+          <div class="prefs-section-title">Repository</div>
+          <div class="prefs-row">
+            <label for="pref-repo-owner">Owner</label>
+            <input type="text" id="pref-repo-owner" placeholder="e.g. webtoolbox">
+          </div>
+          <div class="prefs-row">
+            <label for="pref-repo-name">Name</label>
+            <input type="text" id="pref-repo-name" placeholder="e.g. Website-Toolbox">
+          </div>
+          <div class="prefs-row">
+            <label for="pref-repo-path">Path</label>
+            <input type="text" id="pref-repo-path" placeholder="e.g. ~/Website-Toolbox">
+          </div>
+        </div>
+
+        <div class="prefs-section">
+          <div class="prefs-section-title">AI Agent</div>
+          <div class="prefs-row">
+            <label for="pref-ai-command">Command</label>
+            <input type="text" id="pref-ai-command" placeholder="hermes">
+          </div>
+          <div class="prefs-row">
+            <label for="pref-ai-tag">Tag prefix</label>
+            <input type="text" id="pref-ai-tag" placeholder="@Hermes">
+          </div>
+        </div>
+
+        <div class="prefs-section">
+          <div class="prefs-section-title">Editor</div>
+          <div class="prefs-row">
+            <label for="pref-editor-cmd">Command</label>
+            <input type="text" id="pref-editor-cmd" placeholder="code">
+          </div>
+        </div>
+
+        <div class="prefs-section">
+          <div class="prefs-section-title">Diff</div>
+          <div class="prefs-row">
+            <label for="pref-context-lines">Context lines</label>
+            <input type="number" id="pref-context-lines" min="0" max="50" value="5">
+          </div>
+          <div class="prefs-row">
+            <label>Exclude merge commits</label>
+            <div class="checkbox-wrapper">
+              <input type="checkbox" id="pref-exclude-merges">
+            </div>
+          </div>
+        </div>
+
+        <div class="prefs-section">
+          <div class="prefs-section-title">Image Upload</div>
+          <div class="prefs-row">
+            <label>Enabled</label>
+            <div class="checkbox-wrapper">
+              <input type="checkbox" id="pref-img-enabled">
+            </div>
+          </div>
+          <div class="prefs-row">
+            <label for="pref-s3-bucket">S3 Bucket</label>
+            <input type="text" id="pref-s3-bucket" placeholder="">
+          </div>
+          <div class="prefs-row">
+            <label for="pref-aws-profile">AWS Profile</label>
+            <input type="text" id="pref-aws-profile" placeholder="default">
+          </div>
+          <div class="prefs-row">
+            <label for="pref-aws-region">AWS Region</label>
+            <input type="text" id="pref-aws-region" placeholder="us-east-1">
+          </div>
+        </div>
+
+        <div class="prefs-section">
+          <div class="prefs-section-title">Cleanup</div>
+          <div class="prefs-row">
+            <label>Enabled</label>
+            <div class="checkbox-wrapper">
+              <input type="checkbox" id="pref-cleanup-enabled">
+            </div>
+          </div>
+          <div class="prefs-row">
+            <label for="pref-retention-days">Retention days</label>
+            <input type="number" id="pref-retention-days" min="1" value="180">
+          </div>
+        </div>
+
+        <div class="prefs-section">
+          <div class="prefs-section-title">Agent Rules</div>
+          <div class="prefs-row">
+            <label>Enabled</label>
+            <div class="checkbox-wrapper">
+              <input type="checkbox" id="pref-rules-enabled">
+            </div>
+          </div>
+        </div>
+
+      </div>
+      <div class="prefs-footer">
+        <span class="prefs-saved" id="prefs-saved">✓ Saved</span>
+        <button class="prefs-btn-cancel" id="btn-prefs-cancel">Cancel</button>
+        <button class="prefs-btn-save" id="btn-prefs-save">Save</button>
       </div>
     </div>
   </div>

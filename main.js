@@ -458,6 +458,15 @@ function createMenu() {
       submenu: [
         { role: 'about' },
         { type: 'separator' },
+        {
+          label: 'Preferences...',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => {
+            const focused = BrowserWindow.getFocusedWindow();
+            if (focused) focused.webContents.send('open-preferences');
+          }
+        },
+        { type: 'separator' },
         { role: 'services' },
         { type: 'separator' },
         { role: 'hide' },
@@ -950,9 +959,40 @@ ipcMain.handle('get-config', async () => ({
   repoName: appConfig.repoName || '',
   repoPath: appConfig.repoPath || '',
   editorCommand: appConfig.editorCommand || 'code',
+  contextLines: appConfig.contextLines || 5,
   imageUploadEnabled: (appConfig.imageUpload || {}).enabled || false,
+  imageUpload: appConfig.imageUpload || {},
+  diff: appConfig.diff || {},
+  cleanup: appConfig.cleanup || {},
   rules: appConfig.rules || { enabled: false }
 }));
+
+ipcMain.handle('save-preferences', async (event, prefs) => {
+  try {
+    // Deep merge into appConfig
+    if (prefs.repoOwner !== undefined) appConfig.repoOwner = prefs.repoOwner;
+    if (prefs.repoName !== undefined) appConfig.repoName = prefs.repoName;
+    if (prefs.repoPath !== undefined) appConfig.repoPath = prefs.repoPath;
+    if (prefs.aiCommand !== undefined) appConfig.aiCommand = prefs.aiCommand;
+    if (prefs.aiTagPrefix !== undefined) appConfig.aiTagPrefix = prefs.aiTagPrefix;
+    if (prefs.editorCommand !== undefined) appConfig.editorCommand = prefs.editorCommand;
+    if (prefs.contextLines !== undefined) appConfig.contextLines = prefs.contextLines;
+    if (prefs.diff !== undefined) appConfig.diff = { ...(appConfig.diff || {}), ...prefs.diff };
+    if (prefs.imageUpload !== undefined) appConfig.imageUpload = { ...(appConfig.imageUpload || {}), ...prefs.imageUpload };
+    if (prefs.cleanup !== undefined) appConfig.cleanup = { ...(appConfig.cleanup || {}), ...prefs.cleanup };
+    if (prefs.rules !== undefined) appConfig.rules = { ...(appConfig.rules || {}), ...prefs.rules };
+
+    // Save to private config file
+    const privateDir = path.join(app.getPath('home'), '.config', 'diff-reviewer');
+    const privateConfigPath = path.join(privateDir, 'config.json');
+    fs.mkdirSync(privateDir, { recursive: true });
+    fs.writeFileSync(privateConfigPath, JSON.stringify(appConfig, null, 2));
+    return { success: true };
+  } catch (err) {
+    console.error('[preferences] save failed:', err.message);
+    return { error: err.message };
+  }
+});
 
 // Open file in editor at specific line
 ipcMain.handle('open-file-in-editor', async (event, { filePath, line }) => {

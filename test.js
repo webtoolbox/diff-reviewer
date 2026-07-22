@@ -329,6 +329,119 @@ async function runTests() {
   `);
   assert('Comments cleared on new diff', commentsAfterReload === 0, `count: ${commentsAfterReload}`);
 
+  // ===================== PREFERENCES TESTS =====================
+
+  // TEST: Preferences overlay exists
+  const prefsOverlayExists = await mainWindow.webContents.executeJavaScript(
+    `!!document.getElementById('prefs-overlay')`
+  );
+  assert('Preferences overlay exists', prefsOverlayExists);
+
+  // TEST: Preferences dialog has all required fields
+  const prefFieldIds = await mainWindow.webContents.executeJavaScript(`
+    ['pref-repo-owner','pref-repo-name','pref-repo-path','pref-ai-command',
+     'pref-ai-tag','pref-editor-cmd','pref-context-lines','pref-exclude-merges',
+     'pref-img-enabled','pref-s3-bucket','pref-aws-profile','pref-aws-region',
+     'pref-cleanup-enabled','pref-retention-days','pref-rules-enabled']
+    .map(id => ({ id, exists: !!document.getElementById(id) }))
+  `);
+  const allPrefFieldsExist = prefFieldIds.every(f => f.exists);
+  assert('All preference fields exist', allPrefFieldsExist,
+    `missing: ${prefFieldIds.filter(f => !f.exists).map(f => f.id).join(', ') || 'none'}`);
+
+  // TEST: Open preferences dialog
+  await mainWindow.webContents.executeJavaScript(`openPreferences()`);
+  await new Promise(r => setTimeout(r, 200));
+  const prefsVisible = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('prefs-overlay').style.display`
+  );
+  assert('Preferences dialog opens', prefsVisible === 'flex', `display="${prefsVisible}"`);
+
+  // TEST: Preferences fields are populated with config values
+  const repoOwnerValue = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('pref-repo-owner').value`
+  );
+  const contextLinesValue = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('pref-context-lines').value`
+  );
+  const editorCmdValue = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('pref-editor-cmd').value`
+  );
+  assert('Repo owner field populated', repoOwnerValue === '', `value="${repoOwnerValue}"`);
+  assert('Context lines field populated (default 5)', contextLinesValue === '5', `value="${contextLinesValue}"`);
+  assert('Editor command field populated (default code)', editorCmdValue === 'code', `value="${editorCmdValue}"`);
+
+  // TEST: Preferences fields are editable
+  await mainWindow.webContents.executeJavaScript(`
+    document.getElementById('pref-repo-owner').value = 'test-owner';
+    document.getElementById('pref-repo-name').value = 'test-repo';
+    document.getElementById('pref-context-lines').value = '10';
+    document.getElementById('pref-exclude-merges').checked = true;
+  `);
+  const editedOwner = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('pref-repo-owner').value`
+  );
+  assert('Repo owner field is editable', editedOwner === 'test-owner', `value="${editedOwner}"`);
+
+  // TEST: Save preferences sends correct data
+  await mainWindow.webContents.executeJavaScript(`savePreferences()`);
+  await new Promise(r => setTimeout(r, 500));
+  const prefsSavedPath = path.join(app.getPath('temp'), 'diff-review-prefs.json');
+  assert('Preferences file created', fs.existsSync(prefsSavedPath));
+  if (fs.existsSync(prefsSavedPath)) {
+    const savedPrefs = JSON.parse(fs.readFileSync(prefsSavedPath, 'utf8'));
+    assert('Saved repo owner correct', savedPrefs.repoOwner === 'test-owner', `value="${savedPrefs.repoOwner}"`);
+    assert('Saved repo name correct', savedPrefs.repoName === 'test-repo', `value="${savedPrefs.repoName}"`);
+    assert('Saved context lines correct', savedPrefs.contextLines === 10, `value="${savedPrefs.contextLines}"`);
+    assert('Saved exclude merges correct', savedPrefs.diff.excludeMerges === true, `value="${savedPrefs.diff.excludeMerges}"`);
+  }
+
+  // TEST: Preferences dialog closes after save
+  await new Promise(r => setTimeout(r, 1500));
+  const prefsHiddenAfterSave = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('prefs-overlay').style.display`
+  );
+  assert('Preferences dialog closes after save', prefsHiddenAfterSave === 'none', `display="${prefsHiddenAfterSave}"`);
+
+  // TEST: Close preferences on Cancel
+  await mainWindow.webContents.executeJavaScript(`openPreferences()`);
+  await new Promise(r => setTimeout(r, 200));
+  await mainWindow.webContents.executeJavaScript(`document.getElementById('btn-prefs-cancel').click()`);
+  await new Promise(r => setTimeout(r, 100));
+  const prefsHiddenAfterCancel = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('prefs-overlay').style.display`
+  );
+  assert('Preferences dialog closes on Cancel', prefsHiddenAfterCancel === 'none', `display="${prefsHiddenAfterCancel}"`);
+
+  // TEST: Close preferences on X button
+  await mainWindow.webContents.executeJavaScript(`openPreferences()`);
+  await new Promise(r => setTimeout(r, 200));
+  await mainWindow.webContents.executeJavaScript(`document.getElementById('btn-prefs-close').click()`);
+  await new Promise(r => setTimeout(r, 100));
+  const prefsHiddenAfterX = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('prefs-overlay').style.display`
+  );
+  assert('Preferences dialog closes on X button', prefsHiddenAfterX === 'none', `display="${prefsHiddenAfterX}"`);
+
+  // TEST: Preferences checkboxes work
+  await mainWindow.webContents.executeJavaScript(`openPreferences()`);
+  await new Promise(r => setTimeout(r, 200));
+  const cleanupChecked = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('pref-cleanup-enabled').checked`
+  );
+  assert('Cleanup checkbox populated', cleanupChecked === true);
+  const rulesChecked = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('pref-rules-enabled').checked`
+  );
+  assert('Rules checkbox populated', rulesChecked === false);
+  await mainWindow.webContents.executeJavaScript(`closePreferences()`);
+
+  // TEST: File open in editor IPC handler available
+  const editorHandlerExists = await mainWindow.webContents.executeJavaScript(
+    `typeof window.electronAPI.openFileInEditor === 'function'`
+  );
+  assert('File open in editor handler available', editorHandlerExists);
+
   // Summary
   log('');
   log('='.repeat(50));
@@ -351,12 +464,22 @@ async function runTests() {
 }
 
 ipcMain.handle('open-file', async () => null);
-ipcMain.handle('get-config', async () => ({ chatId: null, prNumber: null }));
+ipcMain.handle('get-config', async () => ({ chatId: null, prNumber: null, aiTagPrefix: '@Hermes', repoOwner: '', repoName: '', repoPath: '', editorCommand: 'code', contextLines: 5, diff: { excludeMerges: true }, imageUpload: { enabled: false, s3Bucket: '', awsProfile: 'default', awsRegion: 'us-east-1' }, cleanup: { enabled: true, retentionDays: 180 }, rules: { enabled: false } }));
 ipcMain.handle('save-review', async (event, review) => {
   const outputPath = path.join(app.getPath('temp'), 'diff-review-pending.json');
   fs.writeFileSync(outputPath, JSON.stringify(review, null, 2));
   return outputPath;
 });
+ipcMain.handle('save-preferences', async (event, prefs) => {
+  const outputPath = path.join(app.getPath('temp'), 'diff-review-prefs.json');
+  fs.writeFileSync(outputPath, JSON.stringify(prefs, null, 2));
+  return { success: true };
+});
+ipcMain.handle('open-file-in-editor', async () => ({ success: true }));
+ipcMain.handle('get-pr-commits', async () => ({ commits: [], prUrl: '#' }));
+ipcMain.handle('get-file-blame', async () => ({}));
+ipcMain.handle('list-prs', async () => ({ prs: [] }));
+ipcMain.handle('save-image', async () => null);
 
 app.whenReady().then(async () => {
   mainWindow = new BrowserWindow({
