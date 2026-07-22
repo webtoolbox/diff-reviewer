@@ -459,9 +459,9 @@ async function runTests() {
   assert('New preference fields exist', allNewFieldsExist,
     `missing: ${newPrefFields.filter(f => !f.exists).map(f => f.id).join(', ') || 'none'}`);
 
-  // TEST: Collapsed files section structure exists (renderFilteredDiff creates it)
+  // TEST: Collapsed files function exists (collapseFilteredFiles)
   const collapsedClassExists = await mainWindow.webContents.executeJavaScript(
-    `typeof appendCollapsedFilteredFiles === 'function'`
+    `typeof collapseFilteredFiles === 'function'`
   );
   assert('Collapsed files function exists', collapsedClassExists);
 

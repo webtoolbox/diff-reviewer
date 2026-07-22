@@ -1418,11 +1418,11 @@ const originalLoadDiff = typeof loadDiff !== 'undefined' ? loadDiff : null;
 function renderFilteredDiff() {
   if (!currentDiffContent) return;
 
-  // Parse diff and filter by extensions
-  const { filtered: filteredDiff, excluded: excludedFiles } = filterDiffByExtensions(currentDiffContent, activeExtensions);
+  // Always render ALL files — sorted by extension
+  const sortedDiff = sortDiffByExtension(currentDiffContent);
 
-  // Use diff2html to render
-  const diff2htmlUi = new Diff2HtmlUI(document.getElementById('diff-container'), filteredDiff, {
+  // Use diff2html to render everything
+  const diff2htmlUi = new Diff2HtmlUI(document.getElementById('diff-container'), sortedDiff, {
     drawFileList: true,
     matching: 'lines',
     outputFormat: 'side-by-side',
@@ -1435,65 +1435,57 @@ function renderFilteredDiff() {
   addLineCommentButtons();
   addFileCommentButtons();
 
-  // Append collapsed excluded files at the bottom
-  appendCollapsedFilteredFiles(excludedFiles);
+  // Determine which extensions are excluded
+  const allExts = extractExtensionsFromDiff(currentDiffContent);
+  const excludedExts = activeExtensions ? allExts.filter(e => !activeExtensions.includes(e)) : [];
+
+  // Collapse filtered-out file wrappers
+  if (excludedExts.length > 0) {
+    collapseFilteredFiles(excludedExts);
+  }
 }
 
-// Render collapsed entries for filtered-out files
-function appendCollapsedFilteredFiles(excludedFiles) {
-  const container = document.getElementById('diff-container');
-  // Remove previous collapsed section if any
-  const existing = container.querySelector('.collapsed-files-section');
-  if (existing) existing.remove();
+// Collapse files matching excluded extensions — same diff2html rendering,
+// just hidden by default with a toggle icon on the header
+function collapseFilteredFiles(excludedExts) {
+  const fileWrappers = diffContainer.querySelectorAll('.d2h-file-wrapper');
+  for (const wrapper of fileWrappers) {
+    const fileNameEl = wrapper.querySelector('.d2h-file-name');
+    if (!fileNameEl) continue;
+    const fileName = fileNameEl.textContent.trim();
+    const ext = fileName.includes('.') ? '.' + fileName.split('.').pop() : '';
+    if (!excludedExts.includes(ext)) continue;
 
-  if (!excludedFiles || excludedFiles.length === 0) return;
+    // Collapse: hide the diff content area, add toggle icon to header
+    const header = wrapper.querySelector('.d2h-file-header');
+    const diffContent = wrapper.querySelector('.d2h-files-diff');
+    if (!header || !diffContent) continue;
 
-  const section = document.createElement('div');
-  section.className = 'collapsed-files-section';
-  section.innerHTML = `
-    <div class="collapsed-files-header">
-      <span>Filtered out</span>
-      <span class="count">${excludedFiles.length}</span>
-    </div>
-    ${excludedFiles.map((f, i) => `
-      <div class="collapsed-file-item" data-index="${i}" title="${f.name}">
-        <span class="toggle-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>
-        <span class="file-path">${f.name}</span>
-        <span class="file-ext">${f.ext}</span>
-      </div>
-      <div class="collapsed-file-diff" data-index="${i}"></div>
-    `).join('')}
-  `;
-  container.appendChild(section);
+    diffContent.style.display = 'none';
 
-  // Attach click handlers
-  section.addEventListener('click', (e) => {
-    const item = e.target.closest('.collapsed-file-item');
-    if (!item) return;
+    // Add toggle icon (same SVG chevron as PR description toggle)
+    const icon = document.createElement('span');
+    icon.className = 'filtered-toggle-icon';
+    icon.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg>';
+    icon.style.cssText = 'cursor:pointer;margin-right:6px;display:inline-flex;align-items:center;transition:transform 0.2s;transform:rotate(-90deg);vertical-align:middle;';
+    header.style.cursor = 'pointer';
+    fileNameEl.insertBefore(icon, fileNameEl.firstChild);
 
-    const idx = item.dataset.index;
-    const diffPanel = section.querySelector(`.collapsed-file-diff[data-index="${idx}"]`);
-    if (!diffPanel) return;
+    // Add "filtered" indicator
+    const badge = document.createElement('span');
+    badge.className = 'filtered-badge';
+    badge.textContent = 'filtered';
+    badge.style.cssText = 'font-size:10px;color:#484f58;margin-left:8px;padding:1px 6px;background:#21262d;border-radius:10px;vertical-align:middle;';
+    fileNameEl.appendChild(badge);
 
-    const isExpanded = item.classList.toggle('expanded');
-    if (isExpanded) {
-      diffPanel.style.display = 'block';
-      // Render diff on first expand (lazy)
-      if (!diffPanel.dataset.rendered) {
-        const fileDiff = excludedFiles[idx].diff;
-        const diff2htmlUi = new Diff2HtmlUI(diffPanel, fileDiff, {
-          drawFileList: false,
-          matching: 'lines',
-          outputFormat: 'side-by-side',
-          colorScheme: 'dark'
-        });
-        diff2htmlUi.draw();
-        diffPanel.dataset.rendered = 'true';
-      }
-    } else {
-      diffPanel.style.display = 'none';
-    }
-  });
+    // Click handler on header to toggle
+    header.addEventListener('click', () => {
+      const isHidden = diffContent.style.display === 'none';
+      diffContent.style.display = isHidden ? '' : 'none';
+      icon.style.transform = isHidden ? 'rotate(0deg)' : 'rotate(-90deg)';
+      if (badge) badge.style.display = isHidden ? 'none' : '';
+    });
+  }
 }
 
 // Filter diff content by file extensions
