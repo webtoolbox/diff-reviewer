@@ -617,6 +617,20 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+// Toast notification system
+function showToast(message, type = 'info', duration = 8000) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  toast.innerHTML = message;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add('toast-out');
+    setTimeout(() => toast.remove(), 300);
+  }, duration);
+}
+
 function resetButtons() {
   btnApprove.disabled = false;
   btnRequestChanges.disabled = false;
@@ -729,15 +743,25 @@ async function submitReview(eventType) {
     if (askCount > 0) msg += ` <span style="color:#3fb950">(${askCount} AI responses received)</span>`;
     prInfo.innerHTML = msg;
 
+    // Toast for AI messages sent
+    if (aiCount > 0) {
+      showToast(`✓ ${aiCount} comment${aiCount > 1 ? 's' : ''} sent to AI agent`, 'info', 6000);
+    }
+
     // Show @ask responses inline
     if (askResponses.length > 0) {
+      let askErrors = 0;
       for (const resp of askResponses) {
         const label = resp.error ? `<span style="color:#f85149">Error: ${escapeHtml(resp.error)}</span>` : `<div style="white-space:pre-wrap;color:#c9d1d9;font-size:13px;">${escapeHtml(resp.response)}</div>`;
         prInfo.innerHTML += `<div style="margin-top:8px;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;">
           <span style="color:#8b949e;font-size:11px;">@ask ${escapeHtml(resp.file)}:${resp.line}</span>
           ${label}
         </div>`;
+        if (resp.error) askErrors++;
       }
+      const askOk = askResponses.length - askErrors;
+      if (askOk > 0) showToast(`✓ ${askOk} AI response${askOk > 1 ? 's' : ''} received`, 'success', 6000);
+      if (askErrors > 0) showToast(`⚠ ${askErrors} AI response${askErrors > 1 ? 's' : ''} failed`, 'error', 8000);
     }
 
     btnApprove.disabled = true;
@@ -770,8 +794,13 @@ async function submitReview(eventType) {
       });
 
       if (result.error) {
+        showToast(`⚠ GitHub submission failed: ${escapeHtml(result.error)}`, 'error', 10000);
         prInfo.innerHTML = `<strong style="color:#f85149">GitHub submission failed:</strong> ${escapeHtml(result.error)}`;
       } else {
+        const ghMsg = eventType === 'approve' ? '✓ Review approved on GitHub' :
+                      eventType === 'request_changes' ? '✓ Changes requested on GitHub' :
+                      '✓ Comment submitted to GitHub';
+        showToast(ghMsg, 'success', 8000);
         prInfo.innerHTML = '<strong style="color:#3fb950">✓ Review submitted to GitHub</strong>';
         if (aiCount > 0) {
           prInfo.innerHTML += ` <span style="color:#58a6ff">(${aiCount} sent to AI)</span>`;
@@ -787,6 +816,34 @@ async function submitReview(eventType) {
         }
         if (feedback.length > 0) {
           await showRulesDialog(feedback);
+        }
+
+        // Auto-fix with AI: trigger Hermes agent to create a fix PR (only for request_changes)
+        if (eventType === 'request_changes' && window.electronAPI.autoFixWithAi) {
+          try {
+            const autoFixConfig = await window.electronAPI.getConfig();
+            const autoFixEnabled = autoFixConfig.autoFix && autoFixConfig.autoFix.enabled !== false;
+            if (autoFixEnabled) {
+              showToast('🤖 Auto-fixing with AI...', 'progress', 30000);
+              const autoFixComments = comments
+                .filter(c => !c.isAiTagged && c.text && c.file)
+                .map(c => ({ file: c.file, line: c.line, text: c.text }));
+              const autoFixResult = await window.electronAPI.autoFixWithAi({
+                prNumber: review.prNumber,
+                comments: autoFixComments,
+                reviewBody: review.body
+              });
+              if (autoFixResult.error) {
+                showToast(`⚠ Auto-fix failed: ${escapeHtml(autoFixResult.error)}`, 'error', 10000);
+              } else if (autoFixResult.success && autoFixResult.prUrl) {
+                const prLink = autoFixResult.prUrl;
+                const prNum = autoFixResult.prNumber || '';
+                showToast(`✓ Auto-fix PR #${escapeHtml(prNum)} created — <a href="${escapeHtml(prLink)}" style="color:#58a6ff" class="pr-url-link">View PR</a>`, 'success', 10000);
+              }
+            }
+          } catch (autoFixErr) {
+            showToast(`⚠ Auto-fix error: ${escapeHtml(autoFixErr.message)}`, 'error', 10000);
+          }
         }
       }
     }
@@ -2281,18 +2338,19 @@ const prefFields = [
   { id: 'pref-ai-tag', key: 'aiTagPrefix', type: 'text' },
   { id: 'pref-editor-cmd', key: 'editorCommand', type: 'text' },
   { id: 'pref-context-lines', key: 'contextLines', type: 'number' },
-  { id: 'pref-exclude-merges', key: 'diff.excludeMerges', type: 'checkbox' },
-  { id: 'pref-img-enabled', key: 'imageUpload.enabled', type: 'checkbox' },
-  { id: 'pref-s3-bucket', key: 'imageUpload.s3Bucket', type: 'text' },
-  { id: 'pref-aws-profile', key: 'imageUpload.awsProfile', type: 'text' },
-  { id: 'pref-aws-region', key: 'imageUpload.awsRegion', type: 'text' },
-  { id: 'pref-cleanup-enabled', key: 'cleanup.enabled', type: 'checkbox' },
-  { id: 'pref-retention-days', key: 'cleanup.retentionDays', type: 'number' },
-  { id: 'pref-rules-enabled', key: 'rules.enabled', type: 'checkbox' },
+  { id: 'pref-diff-mode', key: 'diff.mode', type: 'select' },
   { id: 'pref-title-contains', key: 'prFilter.titleContains', type: 'text' },
   { id: 'pref-review-requested', key: 'prFilter.reviewRequested', type: 'checkbox' },
-  { id: 'pref-diff-mode', key: 'diff.mode', type: 'select' },
-  { id: 'pref-s3-prefix', key: 'imageUpload.s3Prefix', type: 'text' }
+  { id: 'pref-ai-command', key: 'aiCommand', type: 'text' },
+  { id: 'pref-ai-tag', key: 'aiTagPrefix', type: 'text' },
+  { id: 'pref-autofix-enabled', key: 'autoFix.enabled', type: 'checkbox' },
+  { id: 'pref-rules-enabled', key: 'rules.enabled', type: 'checkbox' },
+  { id: 'pref-editor-cmd', key: 'editorCommand', type: 'text' },
+  { id: 'pref-img-enabled', key: 'imageUpload.enabled', type: 'checkbox' },
+  { id: 'pref-s3-bucket', key: 'imageUpload.s3Bucket', type: 'text' },
+  { id: 'pref-s3-prefix', key: 'imageUpload.s3Prefix', type: 'text' },
+  { id: 'pref-aws-profile', key: 'imageUpload.awsProfile', type: 'text' },
+  { id: 'pref-aws-region', key: 'imageUpload.awsRegion', type: 'text' }
 ];
 
 function getNestedValue(obj, path) {

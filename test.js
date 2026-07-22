@@ -340,9 +340,10 @@ async function runTests() {
   // TEST: Preferences dialog has all required fields
   const prefFieldIds = await mainWindow.webContents.executeJavaScript(`
     ['pref-repo-owner','pref-repo-name','pref-repo-path','pref-ai-command',
-     'pref-ai-tag','pref-editor-cmd','pref-context-lines','pref-exclude-merges',
-     'pref-img-enabled','pref-s3-bucket','pref-aws-profile','pref-aws-region',
-     'pref-cleanup-enabled','pref-retention-days','pref-rules-enabled']
+     'pref-ai-tag','pref-editor-cmd','pref-context-lines','pref-diff-mode',
+     'pref-img-enabled','pref-s3-bucket','pref-s3-prefix','pref-aws-profile',
+     'pref-aws-region','pref-title-contains','pref-review-requested',
+     'pref-autofix-enabled','pref-rules-enabled']
     .map(id => ({ id, exists: !!document.getElementById(id) }))
   `);
   const allPrefFieldsExist = prefFieldIds.every(f => f.exists);
@@ -376,7 +377,7 @@ async function runTests() {
     document.getElementById('pref-repo-owner').value = 'test-owner';
     document.getElementById('pref-repo-name').value = 'test-repo';
     document.getElementById('pref-context-lines').value = '10';
-    document.getElementById('pref-exclude-merges').checked = true;
+    document.getElementById('pref-autofix-enabled').checked = true;
   `);
   const editedOwner = await mainWindow.webContents.executeJavaScript(
     `document.getElementById('pref-repo-owner').value`
@@ -393,7 +394,7 @@ async function runTests() {
     assert('Saved repo owner correct', savedPrefs.repoOwner === 'test-owner', `value="${savedPrefs.repoOwner}"`);
     assert('Saved repo name correct', savedPrefs.repoName === 'test-repo', `value="${savedPrefs.repoName}"`);
     assert('Saved context lines correct', savedPrefs.contextLines === 10, `value="${savedPrefs.contextLines}"`);
-    assert('Saved exclude merges correct', savedPrefs.diff.excludeMerges === true, `value="${savedPrefs.diff.excludeMerges}"`);
+    assert('Saved auto-fix enabled', savedPrefs.autoFix && savedPrefs.autoFix.enabled === true, `value="${savedPrefs.autoFix?.enabled}"`);
   }
 
   // TEST: Preferences dialog closes after save
@@ -426,10 +427,10 @@ async function runTests() {
   // TEST: Preferences checkboxes work
   await mainWindow.webContents.executeJavaScript(`openPreferences()`);
   await new Promise(r => setTimeout(r, 200));
-  const cleanupChecked = await mainWindow.webContents.executeJavaScript(
-    `document.getElementById('pref-cleanup-enabled').checked`
+  const autofixChecked = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('pref-autofix-enabled').checked`
   );
-  assert('Cleanup checkbox populated', cleanupChecked === true);
+  assert('Auto-fix checkbox populated', autofixChecked === true);
   const rulesChecked = await mainWindow.webContents.executeJavaScript(
     `document.getElementById('pref-rules-enabled').checked`
   );
@@ -601,6 +602,69 @@ async function runTests() {
   );
   assert('applyExtensionFilter function exists', applyExtFn);
 
+  // ===================== AUTO-FIX WITH AI TESTS =====================
+
+  // TEST: autoFixWithAi IPC bridge exists
+  const autoFixBridgeExists = await mainWindow.webContents.executeJavaScript(
+    `typeof window.electronAPI.autoFixWithAi === 'function'`
+  );
+  assert('autoFixWithAi bridge exists', autoFixBridgeExists);
+
+  // TEST: Config returns autoFix settings
+  const autoFixConfig = await mainWindow.webContents.executeJavaScript(
+    `window.electronAPI.getConfig().then(c => c.autoFix)`
+  );
+  assert('Config has autoFix settings', autoFixConfig && autoFixConfig.enabled === true,
+    `enabled=${autoFixConfig ? autoFixConfig.enabled : 'undefined'}`);
+
+  // TEST: autoFixWithAi returns success for valid PR
+  const autoFixResult = await mainWindow.webContents.executeJavaScript(
+    `window.electronAPI.autoFixWithAi({ prNumber: 123, comments: [{file: 'test.js', line: 10, text: 'fix this'}], reviewBody: 'Please fix' })`
+  );
+  assert('autoFixWithAi returns success', autoFixResult && autoFixResult.success === true,
+    `result=${JSON.stringify(autoFixResult)}`);
+
+  // TEST: autoFixWithAi returns PR URL
+  assert('autoFixWithAi returns PR URL', autoFixResult && autoFixResult.prUrl && autoFixResult.prUrl.includes('/pull/'),
+    `prUrl=${autoFixResult ? autoFixResult.prUrl : 'none'}`);
+
+  // TEST: autoFixWithAi returns error for missing PR number
+  const autoFixNoPr = await mainWindow.webContents.executeJavaScript(
+    `window.electronAPI.autoFixWithAi({ prNumber: null, comments: [], reviewBody: '' })`
+  );
+  assert('autoFixWithAi returns error for missing PR', autoFixNoPr && autoFixNoPr.error,
+    `error=${autoFixNoPr ? autoFixNoPr.error : 'none'}`);
+
+  // ===================== TOAST NOTIFICATION TESTS =====================
+
+  // TEST: showToast function exists
+  const showToastFn = await mainWindow.webContents.executeJavaScript(
+    `typeof showToast === 'function'`
+  );
+  assert('showToast function exists', showToastFn);
+
+  // TEST: Toast container exists in DOM
+  const toastContainerExists = await mainWindow.webContents.executeJavaScript(
+    `!!document.getElementById('toast-container')`
+  );
+  assert('Toast container exists', toastContainerExists);
+
+  // TEST: showToast creates a toast element
+  const toastCreated = await mainWindow.webContents.executeJavaScript(`
+    showToast('Test toast', 'info', 1000);
+    const toasts = document.querySelectorAll('.toast');
+    toasts.length > 0
+  `);
+  assert('showToast creates toast element', toastCreated);
+
+  // TEST: Toast has correct type class
+  const toastHasClass = await mainWindow.webContents.executeJavaScript(`
+    showToast('Success toast', 'success', 1000);
+    const toast = document.querySelector('.toast-success');
+    !!toast
+  `);
+  assert('Toast has success class', toastHasClass);
+
   // Summary
   log('');
   log('='.repeat(50));
@@ -623,7 +687,7 @@ async function runTests() {
 }
 
 ipcMain.handle('open-file', async () => null);
-ipcMain.handle('get-config', async () => ({ chatId: null, prNumber: null, aiTagPrefix: '@Hermes', repoOwner: '', repoName: '', repoPath: '', editorCommand: 'code', contextLines: 5, diff: { excludeMerges: true }, imageUpload: { enabled: false, s3Bucket: '', awsProfile: 'default', awsRegion: 'us-east-1' }, cleanup: { enabled: true, retentionDays: 180 }, rules: { enabled: false } }));
+ipcMain.handle('get-config', async () => ({ chatId: null, prNumber: null, aiTagPrefix: '@Hermes', repoOwner: '', repoName: '', repoPath: '', editorCommand: 'code', contextLines: 5, diff: { excludeMerges: true }, imageUpload: { enabled: false, s3Bucket: '', awsProfile: 'default', awsRegion: 'us-east-1' }, cleanup: { enabled: true, retentionDays: 180 }, rules: { enabled: false }, autoFix: { enabled: true } }));
 ipcMain.handle('save-review', async (event, review) => {
   const outputPath = path.join(app.getPath('temp'), 'diff-review-pending.json');
   fs.writeFileSync(outputPath, JSON.stringify(review, null, 2));
@@ -646,6 +710,11 @@ ipcMain.handle('get-collaborators', async () => [
   {login: 'shrutih-wt', avatar_url: 'https://avatars.githubusercontent.com/u/4?v=4'},
   {login: 'alok-wt', avatar_url: 'https://avatars.githubusercontent.com/u/5?v=4'}
 ]);
+ipcMain.handle('auto-fix-with-ai', async (event, { prNumber, comments, reviewBody }) => {
+  // Mock: return a fake PR URL for testing
+  if (!prNumber) return { error: 'PR number is required' };
+  return { success: true, prUrl: `https://github.com/test-owner/test-repo/pull/999`, prNumber: '999' };
+});
 
 app.whenReady().then(async () => {
   mainWindow = new BrowserWindow({

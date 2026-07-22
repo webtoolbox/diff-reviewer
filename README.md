@@ -54,6 +54,7 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 
 ### File Filtering
 - **File extension pre-filter** — filter the diff by file type
+- **File name filter** — type a partial file name to show only matching files
 
 ![File Filter](screenshots/file-filter.jpg)
 
@@ -69,6 +70,15 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 - **Image support** — paste (Cmd+V) or drag-and-drop images into comments
 - **S3 upload** — images uploaded to S3 for inline GitHub markdown
 - **Desktop AI agent integration** — tag @hermes (or any other agent) in comments to message a desktop AI agent. Use @ask for inline responses.
+- **User mentions** — type @ in any comment to get an autosuggest dropdown of repo collaborators. Select a collaborator to insert @username. Fetches real collaborators via the GitHub API.
+
+![Mention Dropdown](screenshots/mention-dropdown.jpg)
+
+### Auto-fix with AI
+- **Automatic PR creation** — when requesting changes, review comments are sent to the Hermes AI agent which creates a new PR with the necessary fixes
+- **Follows repo guidelines** — the agent follows the AGENTS.md file in the repository
+- **Participant management** — all PR participants (author, assignees, reviewers) except the reviewer are added to the new PR
+- **Configurable** — enable/disable via `autoFix.enabled` in config.json (enabled by default)
 
 ### Agent Rules
 - **Rules proposal** — after submitting a review, AI analyzes feedback against AGENTS.md and proposes new rules

@@ -32,6 +32,9 @@ function loadConfig() {
       s3Acl: 'public-read',
       awsProfile: 'default',
       awsRegion: 'us-east-1'
+    },
+    autoFix: {
+      enabled: true
     }
   };
 
@@ -43,6 +46,7 @@ function loadConfig() {
     config = { ...config, ...parsed };
     if (parsed.imageUpload) config.imageUpload = { ...config.imageUpload, ...parsed.imageUpload };
     if (parsed.prFilter) config.prFilter = { ...config.prFilter, ...parsed.prFilter };
+    if (parsed.autoFix) config.autoFix = { ...config.autoFix, ...parsed.autoFix };
   } catch {}
 
   try {
@@ -51,6 +55,7 @@ function loadConfig() {
     config = { ...config, ...parsed };
     if (parsed.imageUpload) config.imageUpload = { ...config.imageUpload, ...parsed.imageUpload };
     if (parsed.prFilter) config.prFilter = { ...config.prFilter, ...parsed.prFilter };
+    if (parsed.autoFix) config.autoFix = { ...config.autoFix, ...parsed.autoFix };
   } catch {}
 
   return config;
@@ -876,6 +881,112 @@ ipcMain.handle('submit-github-review', async (event, { prNumber, body, eventType
   }
 });
 
+// Auto-fix with AI: send review comments to Hermes agent to create a fix PR
+let currentUserLogin = null; // Cache for the session
+
+ipcMain.handle('auto-fix-with-ai', async (event, { prNumber, comments, reviewBody }) => {
+  const owner = appConfig.repoOwner;
+  const repo = appConfig.repoName;
+  if (!owner || !repo) {
+    return { error: 'repoOwner and repoName must be configured in config.json' };
+  }
+  if (!prNumber) {
+    return { error: 'PR number is required' };
+  }
+
+  try {
+    // Get PR details
+    const prJson = await execPromise(
+      `gh api "repos/${owner}/${repo}/pulls/${prNumber}"`
+    );
+    const pr = JSON.parse(prJson);
+    const prAuthor = pr.user.login;
+    const headBranch = pr.head.ref;
+    const baseBranch = pr.base.ref;
+    const assignees = (pr.assignees || []).map(a => a.login);
+    const requestedReviewers = (pr.requested_reviewers || []).map(r => r.login);
+
+    // Get current user (the reviewer) to exclude from notifications
+    if (!currentUserLogin) {
+      currentUserLogin = await execPromise('gh api user --jq .login');
+    }
+
+    // Collect all participants except the current user
+    const allParticipants = new Set([prAuthor, ...assignees, ...requestedReviewers]);
+    allParticipants.delete(currentUserLogin);
+    const participants = [...allParticipants];
+
+    // Build comment summary for the prompt
+    const commentLines = (comments || [])
+      .filter(c => c.text && c.file)
+      .map((c, i) => `${i + 1}. **${c.file}${c.line ? ':' + c.line : ''}**: ${c.text}`);
+    const commentSummary = commentLines.length > 0
+      ? commentLines.join('\n')
+      : '(No inline comments)';
+
+    const bodySummary = reviewBody ? `\n\nReview body:\n${reviewBody}` : '';
+
+    // Build the prompt for Hermes
+    const prompt = `You are an AI code reviewer and fixer. A code review was submitted for PR #${prNumber} in ${owner}/${repo} requesting changes. Your job is to create a PR with fixes.
+
+**Repository**: ${owner}/${repo}
+**Original PR**: #${prNumber}
+**PR Author**: ${prAuthor}
+**Head Branch**: ${headBranch}
+**Base Branch**: ${baseBranch}
+
+**Review Comments**:
+${commentSummary}${bodySummary}
+
+**Instructions**:
+1. Clone or pull the repository: \`gh repo clone ${owner}/${repo}\` or \`cd <repo-path> && git fetch\`
+2. Create a new branch from the PR's head branch: \`git checkout -b auto-fix/pr-${prNumber} origin/${headBranch}\`
+3. Read each file mentioned in the review comments and make the necessary code changes to address each comment
+4. If an AGENTS.md file exists in the repo, follow its guidelines for code changes
+5. Commit your changes with a clear message like "fix: address review comments for PR #${prNumber}"
+6. Push the branch: \`git push origin auto-fix/pr-${prNumber}\`
+7. Create a PR targeting the original branch: \`gh pr create --base ${headBranch} --title "Auto-fix: Review comments for PR #${prNumber}" --body "Addresses review comments from PR #${prNumber}.\\n\\nReview comments addressed:\\n${commentSummary.replace(/"/g, '\\"')}"\`
+8. Add reviewers and assignees: \`gh pr edit --add-reviewer ${participants.join(',')} --add-assignee ${participants.join(',')}\`
+9. After creating the PR, add a comment on the original PR #${prNumber} mentioning the fix PR: \`gh pr comment ${prNumber} --body "🤖 I've created an auto-fix PR addressing the review comments: <link to new PR>"\`
+
+IMPORTANT: Return ONLY the new PR URL as the last line of your output, in the format: PR_URL: https://github.com/${owner}/${repo}/pull/<number>`;
+
+    console.log('[auto-fix] Sending prompt to Hermes agent...');
+
+    // Run hermes chat with the prompt
+    const stdout = await execPromise(
+      `hermes chat -p wt ${JSON.stringify(prompt)} --model anthropic/claude-sonnet-4`,
+      { maxBuffer: 50 * 1024 * 1024, timeout: 600000 }
+    );
+
+    console.log('[auto-fix] Hermes response:', stdout.substring(0, 200));
+
+    // Extract PR URL from response
+    const prUrlMatch = stdout.match(/PR_URL:\s*(https:\/\/[^\s]+)/i);
+    const prUrl = prUrlMatch ? prUrlMatch[1] : null;
+
+    // Try to extract PR number from URL
+    const prNumMatch = prUrl ? prUrl.match(/\/pull\/(\d+)/) : null;
+    const newPrNumber = prNumMatch ? prNumMatch[1] : null;
+
+    if (prUrl) {
+      return { success: true, prUrl, prNumber: newPrNumber };
+    }
+
+    // If no PR_URL found, try to find any GitHub PR URL in output
+    const anyPrUrl = stdout.match(/https:\/\/github\.com\/[^\s]+\/pull\/\d+/);
+    if (anyPrUrl) {
+      const num = anyPrUrl[0].match(/\/pull\/(\d+)/);
+      return { success: true, prUrl: anyPrUrl[0], prNumber: num ? num[1] : null };
+    }
+
+    return { success: false, error: 'Agent did not return a PR URL. Output: ' + stdout.substring(0, 500) };
+  } catch (err) {
+    console.error('[auto-fix] Failed:', err.message);
+    return { error: err.message };
+  }
+});
+
 ipcMain.handle('export-markdown', async (event, { markdown, defaultName }) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const result = await dialog.showSaveDialog(win, {
@@ -990,7 +1101,8 @@ ipcMain.handle('get-config', async () => ({
   imageUpload: appConfig.imageUpload || {},
   diff: appConfig.diff || {},
   cleanup: appConfig.cleanup || {},
-  rules: appConfig.rules || { enabled: false }
+  rules: appConfig.rules || { enabled: false },
+  autoFix: appConfig.autoFix || { enabled: true }
 }));
 
 ipcMain.handle('save-preferences', async (event, prefs) => {
