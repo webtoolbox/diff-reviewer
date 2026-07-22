@@ -657,13 +657,106 @@ async function runTests() {
   `);
   assert('showToast creates toast element', toastCreated);
 
-  // TEST: Toast has correct type class
+  // Toast has correct type class
   const toastHasClass = await mainWindow.webContents.executeJavaScript(`
     showToast('Success toast', 'success', 1000);
     const toast = document.querySelector('.toast-success');
     !!toast
   `);
   assert('Toast has success class', toastHasClass);
+
+  // ===================== VOICE MODE TESTS =====================
+
+  // Voice button exists
+  const voiceBtnExists = await mainWindow.webContents.executeJavaScript(`
+    !!document.getElementById('btn-voice')
+  `);
+  assert('Voice button exists', voiceBtnExists);
+
+  // Voice button has correct title
+  const voiceBtnTitle = await mainWindow.webContents.executeJavaScript(`
+    document.getElementById('btn-voice').title
+  `);
+  assert('Voice button has title', voiceBtnTitle.includes('Ctrl+B'), `title="${voiceBtnTitle}"`);
+
+  // Voice button has mic SVG icon
+  const voiceBtnSvg = await mainWindow.webContents.executeJavaScript(`
+    !!document.getElementById('btn-voice').querySelector('svg')
+  `);
+  assert('Voice button has SVG icon', voiceBtnSvg);
+
+  // Voice transcript element exists
+  const voiceTranscriptExists = await mainWindow.webContents.executeJavaScript(`
+    !!document.getElementById('voice-transcript')
+  `);
+  assert('Voice transcript element exists', voiceTranscriptExists);
+
+  // Voice transcript hidden by default
+  const voiceTranscriptHidden = await mainWindow.webContents.executeJavaScript(`
+    document.getElementById('voice-transcript').classList.contains('show')
+  `);
+  assert('Voice transcript hidden by default', !voiceTranscriptHidden);
+
+  // processVoiceCommand bridge exists
+  const voiceBridgeExists = await mainWindow.webContents.executeJavaScript(`
+    typeof window.electronAPI.processVoiceCommand === 'function'
+  `);
+  assert('processVoiceCommand bridge exists', voiceBridgeExists);
+
+  // Voice mode functions exist
+  const voiceFunctionsExist = await mainWindow.webContents.executeJavaScript(`
+    typeof toggleVoice === 'function' && typeof startVoice === 'function' && typeof stopVoice === 'function' && typeof executeSingleVoiceAction === 'function' && typeof processVoiceResults === 'function' && typeof processVoiceAudio === 'function'
+  `);
+  assert('Voice mode functions exist', voiceFunctionsExist);
+
+  // getDiffFiles function exists and works
+  const diffFilesResult = await mainWindow.webContents.executeJavaScript(`
+    typeof getDiffFiles === 'function' ? JSON.stringify(getDiffFiles()) : '[]'
+  `);
+  const diffFiles = JSON.parse(diffFilesResult);
+  assert('getDiffFiles returns files', diffFiles.length > 0, `files: ${diffFiles.map(f => f.name).join(', ')}`);
+
+  // processVoiceCommand IPC works via mock — returns actions array
+  const voiceResult = await mainWindow.webContents.executeJavaScript(`
+    window.electronAPI.processVoiceCommand({ audioBase64: 'dGVzdA==', context: { prNumber: '1', files: [{name: 'src/main.js', lines: 10}], comments: [], reviewBody: '' } })
+  `);
+  assert('processVoiceCommand returns actions array', voiceResult && Array.isArray(voiceResult.actions) && voiceResult.actions.length > 0, `actions: ${JSON.stringify(voiceResult?.actions)}`);
+
+  // processVoiceCommand returns multiple actions
+  const voiceMultiResult = await mainWindow.webContents.executeJavaScript(`
+    window.electronAPI.processVoiceCommand({ audioBase64: 'dGVzdA==', context: { prNumber: '1', files: [{name: 'src/main.js', lines: 10}], comments: [], reviewBody: '' } })
+  `);
+  assert('processVoiceCommand returns multiple actions', voiceMultiResult && voiceMultiResult.actions && voiceMultiResult.actions.length >= 2, `count: ${voiceMultiResult?.actions?.length}`);
+
+  // Voice action types are correct
+  const voiceActionTypes = await mainWindow.webContents.executeJavaScript(`
+    window.electronAPI.processVoiceCommand({ audioBase64: 'dGVzdA==', context: { prNumber: '1', files: [{name: 'src/main.js', lines: 10}], comments: [], reviewBody: '' } }).then(r => JSON.stringify(r.actions.map(a => a.action)))
+  `);
+  assert('Voice actions include approve', voiceActionTypes.includes('approve'), `types: ${voiceActionTypes}`);
+
+  // executeSingleVoiceAction function exists
+  const execFnExists = await mainWindow.webContents.executeJavaScript(`
+    typeof executeSingleVoiceAction === 'function'
+  `);
+  assert('executeSingleVoiceAction function exists', execFnExists);
+
+  // processVoiceResults function exists
+  const procFnExists = await mainWindow.webContents.executeJavaScript(`
+    typeof processVoiceResults === 'function'
+  `);
+  assert('processVoiceResults function exists', procFnExists);
+
+  // Voice state variables exist
+  const voiceStateExists = await mainWindow.webContents.executeJavaScript(`
+    typeof voiceActive !== 'undefined' && typeof voiceRecorder !== 'undefined' && typeof voiceStream !== 'undefined'
+  `);
+  assert('Voice state variables exist', voiceStateExists);
+
+  // Voice constants exist
+  const voiceConstantsExist = await mainWindow.webContents.executeJavaScript(`
+    typeof VOICE_SILENCE_RMS_THRESHOLD !== 'undefined' && typeof VOICE_SILENCE_MS !== 'undefined' && typeof VOICE_MAX_RECORDING_MS !== 'undefined'
+  `);
+  assert('Voice constants exist', voiceConstantsExist);
 
   // Summary
   log('');
@@ -714,6 +807,18 @@ ipcMain.handle('auto-fix-with-ai', async (event, { prNumber, comments, reviewBod
   // Mock: return a fake PR URL for testing
   if (!prNumber) return { error: 'PR number is required' };
   return { success: true, prUrl: `https://github.com/test-owner/test-repo/pull/999`, prNumber: '999' };
+});
+ipcMain.handle('process-voice-command', async (event, { audioBase64, context }) => {
+  // Mock: return multiple actions based on context
+  const files = context?.files || [];
+  const actions = [];
+  // Always return an approve action for testing
+  actions.push({ action: 'approve' });
+  // If there are files, add a test comment
+  if (files.length > 0) {
+    actions.push({ action: 'file_comment', file: files[0].name, text: 'Voice test comment' });
+  }
+  return { success: true, actions };
 });
 
 app.whenReady().then(async () => {

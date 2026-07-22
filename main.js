@@ -987,6 +987,136 @@ IMPORTANT: Return ONLY the new PR URL as the last line of your output, in the fo
   }
 });
 
+// ===================== VOICE COMMAND HANDLER =====================
+
+// Find Hermes venv Python
+function findHermesPython() {
+  const hermesHome = path.join(app.getPath('home'), '.hermes', 'hermes-agent', 'venv', 'bin', 'python');
+  if (fs.existsSync(hermesHome)) return hermesHome;
+  // Fallback: system python3
+  return 'python3';
+}
+
+const sttScriptPath = path.join(__dirname, 'stt-transcribe.py');
+
+ipcMain.handle('process-voice-command', async (event, { audioBase64, context }) => {
+  const { prNumber, files, comments, reviewBody } = context || {};
+
+  let audioPath = null;
+  try {
+    // Step 1: Save audio to temp file
+    const audioBuffer = Buffer.from(audioBase64, 'base64');
+    const ext = '.webm';
+    audioPath = path.join(app.getPath('temp'), `voice-recording-${Date.now()}${ext}`);
+    fs.writeFileSync(audioPath, audioBuffer);
+    console.log('[voice] Audio saved:', audioPath, `(${audioBuffer.length} bytes)`);
+
+    // Step 2: Transcribe using Hermes venv's faster-whisper
+    const pythonBin = findHermesPython();
+    console.log('[voice] Using Python:', pythonBin);
+
+    const transcript = await execPromise(
+      `${pythonBin} ${sttScriptPath} ${audioPath}`,
+      { maxBuffer: 10 * 1024 * 1024, timeout: 30000 }
+    );
+
+    const trimmedTranscript = transcript.trim();
+    if (!trimmedTranscript) {
+      return { error: 'No speech detected in audio' };
+    }
+    console.log('[voice] Transcript:', trimmedTranscript);
+
+    // Step 3: Send transcription to Hermes for interpretation
+    const fileList = (files || []).map(f => `  - ${f.name} (${f.lines || '?'} lines)`).join('\n');
+    const commentList = (comments || []).map((c, i) =>
+      `  ${i + 1}. [${c.level || 'line'}] ${c.file}${c.line ? ':' + c.line : ''} — "${c.text}"`
+    ).join('\n');
+
+    const prompt = `You are a voice-controlled code review assistant. The user is reviewing a pull request and speaking commands naturally. Interpret their spoken instruction and return JSON actions.
+
+**Current Context:**
+- PR Number: ${prNumber || 'none loaded'}
+- Files in diff:
+${fileList || '  (no files loaded)'}
+- Existing comments:
+${commentList || '  (no comments yet)'}
+- Review body so far: "${reviewBody || ''}"
+
+**User said:** "${trimmedTranscript}"
+
+**Available actions (return ONE or MORE as a JSON array):**
+
+1. Add a line-level comment:
+   {"action":"line_comment","file":"path/to/file","line":42,"side":"RIGHT","text":"comment text"}
+
+2. Add a file-level comment:
+   {"action":"file_comment","file":"path/to/file","text":"comment text"}
+
+3. Add/update the PR-level review body:
+   {"action":"review_body","text":"review summary text"}
+
+4. Approve the PR:
+   {"action":"approve"}
+
+5. Request changes:
+   {"action":"request_changes"}
+
+6. Submit review as comment only:
+   {"action":"submit_comment"}
+
+7. Ask the developer a question (tagged @ask):
+   {"action":"ask","file":"path/to/file","line":42,"text":"question about the code"}
+
+8. Just a message to show the user (no UI action):
+   {"action":"message","text":"your response message"}
+
+**Rules:**
+- The user may give MULTIPLE commands in one sentence. Return ALL actions as a JSON array.
+- Example: "approve this PR and add a comment on line 10 of main.js saying looks good" should return TWO actions.
+- If the user mentions a specific file, use the closest matching filename from the file list.
+- If the user mentions a line number, use that exact line number.
+- If the user says "approve" or "looks good", use {"action":"approve"}.
+- If the user says "request changes" or "needs changes", use {"action":"request_changes"}.
+- If the user asks "why" or "how" about code, use the "ask" action.
+- If the user dictates a comment, use "line_comment" or "file_comment".
+- If the user says "set review body to..." or "my review is...", use "review_body".
+- If the user says "submit" or "submit as comment", use "submit_comment".
+- For anything else, use "message" to respond.
+
+Return a JSON array of actions. If only one action, still return it as an array: [{"action":"approve"}].
+Do not wrap in markdown code fences. Return ONLY the JSON.`;
+
+    console.log('[voice] Sending to Hermes for interpretation...');
+    const stdout = await execPromise(
+      `hermes chat -p wt ${JSON.stringify(prompt)} --model anthropic/claude-sonnet-4 -Q`,
+      { maxBuffer: 10 * 1024 * 1024, timeout: 60000 }
+    );
+
+    const response = stdout.trim();
+    console.log('[voice] Response:', response.substring(0, 300));
+
+    // Step 4: Parse JSON response — expect array of actions
+    try {
+      const cleaned = response.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+      const parsed = JSON.parse(cleaned);
+      // Normalize: if single object, wrap in array
+      const actions = Array.isArray(parsed) ? parsed : [parsed];
+      return { success: true, actions };
+    } catch (parseErr) {
+      // Not JSON — treat as a message
+      return { success: true, actions: [{ action: 'message', text: response }] };
+    }
+  } catch (err) {
+    console.error('[voice] Failed:', err.message);
+    return { error: err.message };
+  } finally {
+    // Always clean up temp audio file
+    if (audioPath) {
+      try { fs.unlinkSync(audioPath); } catch {}
+    }
+  }
+});
+
 ipcMain.handle('export-markdown', async (event, { markdown, defaultName }) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const result = await dialog.showSaveDialog(win, {

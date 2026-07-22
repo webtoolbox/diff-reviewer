@@ -52,6 +52,50 @@
     #btn-export:hover { background: #30363d; }
     #btn-export svg { width: 14px; height: 14px; fill: none; stroke: #c9d1d9; }
 
+    /* Voice mic button */
+    #btn-voice {
+      background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
+      padding: 4px 6px; border-radius: 8px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s; position: relative;
+    }
+    #btn-voice:hover { background: #30363d; }
+    #btn-voice svg { width: 14px; height: 14px; fill: none; stroke: #c9d1d9; }
+    #btn-voice.listening {
+      background: #da3633; border-color: #da3633; color: #fff;
+      animation: voice-pulse 1.5s ease-in-out infinite;
+    }
+    #btn-voice.listening svg { stroke: #fff; }
+    #btn-voice.processing {
+      background: #8957e5; border-color: #8957e5; color: #fff;
+    }
+    #btn-voice.processing svg { stroke: #fff; animation: voice-spin 1s linear infinite; }
+    @keyframes voice-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(218, 54, 51, 0.4); }
+      50% { box-shadow: 0 0 0 6px rgba(218, 54, 51, 0); }
+    }
+    @keyframes voice-spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    /* Voice transcript bar */
+    #voice-transcript {
+      display: none; position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%);
+      background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+      padding: 10px 16px; min-width: 300px; max-width: 600px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4); z-index: 9998;
+      font-size: 13px; color: #c9d1d9; text-align: center;
+    }
+    #voice-transcript.show { display: block; }
+    #voice-transcript .transcript-label {
+      font-size: 11px; color: #8b949e; margin-bottom: 4px;
+    }
+    #voice-transcript .transcript-text {
+      color: #f0f6fc; font-style: italic;
+    }
+    #voice-transcript .transcript-text.interim { color: #8b949e; }
+
     /* PR number input */
     #pr-number-wrapper { display: flex; align-items: center; gap: 4px; }
     #pr-number {
@@ -846,6 +890,14 @@
         <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/>
       </svg>
     </button>
+    <button id="btn-voice" title="Voice mode (Ctrl+B)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/>
+        <path d="M19 10v2a7 7 0 01-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </button>
     <span id="comment-nav" style="display:none">
       <button id="btn-prev-comment" title="Previous comment (Cmd+[)">◀</button>
       <span id="comment-nav-label" style="font-size:12px;color:#8b949e;margin:0 4px"></span>
@@ -1024,6 +1076,12 @@
         <button class="prefs-btn-save" id="btn-prefs-save">Save</button>
       </div>
     </div>
+  </div>
+
+  <!-- Voice transcript bar -->
+  <div id="voice-transcript">
+    <div class="transcript-label">Listening...</div>
+    <div class="transcript-text"></div>
   </div>
 
   <!-- Toast notification container -->

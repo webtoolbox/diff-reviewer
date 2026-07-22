@@ -2442,3 +2442,423 @@ document.addEventListener('keydown', (e) => {
 // Listen for menu trigger
 window.electronAPI.onOpenPreferences(() => openPreferences());
 
+// ===================== VOICE MODE =====================
+
+const btnVoice = document.getElementById('btn-voice');
+const voiceTranscript = document.getElementById('voice-transcript');
+const voiceTranscriptLabel = voiceTranscript ? voiceTranscript.querySelector('.transcript-label') : null;
+const voiceTranscriptText = voiceTranscript ? voiceTranscript.querySelector('.transcript-text') : null;
+
+let voiceActive = false;
+let voiceRecorder = null;
+let voiceStream = null;
+let voiceAudioCtx = null;
+let voiceAnalyser = null;
+let voiceAnimFrame = null;
+let voiceSilenceTimer = null;
+let voiceHeardSpeech = false;
+let voiceStartTime = 0;
+let voiceAudioChunks = [];
+
+// Silence detection params (matching Hermes desktop app)
+const VOICE_SILENCE_RMS_THRESHOLD = 0.075;
+const VOICE_SILENCE_MS = 1500;
+const VOICE_IDLE_SILENCE_MS = 12000;
+const VOICE_MAX_RECORDING_MS = 60000;
+
+// Get list of files currently visible in the diff
+function getDiffFiles() {
+  const files = [];
+  const wrappers = diffContainer.querySelectorAll('.d2h-file-wrapper');
+  wrappers.forEach(wrapper => {
+    const nameEl = wrapper.querySelector('.d2h-file-name');
+    if (nameEl) {
+      const name = nameEl.textContent.trim();
+      const lines = wrapper.querySelectorAll('.d2h-code-linenumber:not(.d2h-code-side-emptyplaceholder), .d2h-code-side-linenumber:not(.d2h-code-side-emptyplaceholder)');
+      files.push({ name, lines: lines.length || '?' });
+    }
+  });
+  return files;
+}
+
+// Build context for the voice command
+function buildVoiceContext() {
+  return {
+    prNumber: prNumberInput.value.trim() || null,
+    files: getDiffFiles(),
+    comments: comments.map(c => ({ file: c.file, line: c.line, side: c.side, text: c.text, level: c.level })),
+    reviewBody: reviewBody.value.trim()
+  };
+}
+
+// Execute a single voice command action on the UI
+function executeSingleVoiceAction(action) {
+  switch (action.action) {
+    case 'line_comment': {
+      const wrappers = diffContainer.querySelectorAll('.d2h-file-wrapper');
+      let targetWrapper = null;
+      for (const w of wrappers) {
+        const nameEl = w.querySelector('.d2h-file-name');
+        if (nameEl && nameEl.textContent.trim() === action.file) {
+          targetWrapper = w;
+          break;
+        }
+      }
+      if (!targetWrapper) {
+        showToast(`⚠ File "${action.file}" not found in diff`, 'error', 5000);
+        return;
+      }
+
+      const sideDiffs = targetWrapper.querySelectorAll('.d2h-file-side-diff');
+      const isRight = action.side === 'RIGHT';
+      const sideDiff = sideDiffs[isRight ? 1 : 0] || sideDiffs[0];
+      if (!sideDiff) {
+        addVoiceFileComment(action.file, action.text);
+        return;
+      }
+
+      const lines = sideDiff.querySelectorAll('.d2h-code-side-line:not(.d2h-code-side-emptyplaceholder)');
+      let targetLine = null;
+      for (const line of lines) {
+        const lineNumEl = line.querySelector('.d2h-code-side-linenumber');
+        if (lineNumEl && parseInt(lineNumEl.textContent.trim()) === action.line) {
+          targetLine = line;
+          break;
+        }
+      }
+      if (!targetLine) {
+        addVoiceFileComment(action.file, action.text);
+        return;
+      }
+
+      // Add comment directly without opening dialog (voice mode = silent execution)
+      comments.push({
+        file: action.file,
+        line: action.line,
+        side: action.side || 'RIGHT',
+        text: action.text,
+        isAiTagged: false,
+        level: 'line',
+        codeContext: null,
+        imageDataUrl: null
+      });
+      renderLineCommentMarker(comments[comments.length - 1]);
+      updateCommentCount();
+      updateCommentNav();
+      autoSaveDraft();
+      break;
+    }
+
+    case 'file_comment': {
+      addVoiceFileComment(action.file, action.text);
+      break;
+    }
+
+    case 'review_body': {
+      if (reviewBody.value.trim()) {
+        reviewBody.value = reviewBody.value.trim() + '\n\n' + action.text;
+      } else {
+        reviewBody.value = action.text;
+      }
+      autoSaveDraft();
+      break;
+    }
+
+    case 'approve': {
+      if (!btnApprove.disabled) btnApprove.click();
+      break;
+    }
+
+    case 'request_changes': {
+      if (!btnRequestChanges.disabled) btnRequestChanges.click();
+      break;
+    }
+
+    case 'submit_comment': {
+      if (!btnComment.disabled) btnComment.click();
+      break;
+    }
+
+    case 'ask': {
+      const askText = `@ask ${action.text}`;
+      if (action.file && action.line) {
+        comments.push({
+          file: action.file, line: action.line, side: 'RIGHT',
+          text: askText, isAiTagged: true, level: 'line',
+          codeContext: null, imageDataUrl: null
+        });
+        renderLineCommentMarker(comments[comments.length - 1]);
+      } else if (action.file) {
+        comments.push({
+          file: action.file, line: null, side: null,
+          text: askText, isAiTagged: true, level: 'file',
+          codeContext: null, imageDataUrl: null
+        });
+        renderFileCommentMarker(comments[comments.length - 1]);
+      } else {
+        if (reviewBody.value.trim()) {
+          reviewBody.value = reviewBody.value.trim() + '\n\n' + askText;
+        } else {
+          reviewBody.value = askText;
+        }
+      }
+      updateCommentCount();
+      updateCommentNav();
+      autoSaveDraft();
+      break;
+    }
+
+    case 'message':
+    default: {
+      if (action.text) {
+        showToast(action.text, 'info', 8000);
+      }
+      break;
+    }
+  }
+}
+
+function addVoiceFileComment(fileName, text) {
+  const wrappers = diffContainer.querySelectorAll('.d2h-file-wrapper');
+  let targetWrapper = null;
+  for (const w of wrappers) {
+    const nameEl = w.querySelector('.d2h-file-name');
+    if (nameEl && nameEl.textContent.trim() === fileName) {
+      targetWrapper = w;
+      break;
+    }
+  }
+  if (!targetWrapper) {
+    showToast(`⚠ File "${fileName}" not found in diff`, 'error', 5000);
+    return;
+  }
+
+  comments.push({
+    file: fileName, line: null, side: null,
+    text: text, isAiTagged: false, level: 'file',
+    codeContext: null, imageDataUrl: null
+  });
+  renderFileCommentMarker(comments[comments.length - 1]);
+  updateCommentCount();
+  updateCommentNav();
+  autoSaveDraft();
+}
+
+// Process voice results — handles array of actions from Hermes
+async function processVoiceResults(result) {
+  if (result.error) {
+    showToast(`⚠ Voice error: ${result.error}`, 'error', 8000);
+    return;
+  }
+
+  const actions = result.actions || (result.action ? [result.action] : []);
+  if (actions.length === 0) {
+    showToast('No actions returned from voice command', 'info', 4000);
+    return;
+  }
+
+  let successCount = 0;
+  for (const action of actions) {
+    try {
+      executeSingleVoiceAction(action);
+      successCount++;
+    } catch (err) {
+      console.error('[voice] Action execution error:', err);
+    }
+  }
+
+  if (successCount > 0) {
+    showToast(`✓ ${successCount} action${successCount > 1 ? 's' : ''} executed`, 'success', 4000);
+  }
+}
+
+// Process audio blob: send to main process for STT + Hermes interpretation
+async function processVoiceAudio(audioBlob) {
+  btnVoice.classList.remove('listening');
+  btnVoice.classList.add('processing');
+  voiceTranscriptLabel.textContent = 'Processing...';
+  voiceTranscriptText.textContent = 'Transcribing and interpreting...';
+  voiceTranscriptText.classList.remove('interim');
+
+  try {
+    // Convert blob to base64
+    const arrayBuffer = await audioBlob.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < uint8Array.length; i++) {
+      binary += String.fromCharCode(uint8Array[i]);
+    }
+    const base64 = btoa(binary);
+
+    const context = buildVoiceContext();
+    const result = await window.electronAPI.processVoiceCommand({ audioBase64: base64, context });
+    await processVoiceResults(result);
+  } catch (err) {
+    console.error('[voice] Process error:', err);
+    showToast(`⚠ Voice processing failed: ${err.message}`, 'error', 8000);
+  } finally {
+    btnVoice.classList.remove('processing');
+    voiceTranscript.classList.remove('show');
+  }
+}
+
+// Start microphone recording with silence detection (matching Hermes desktop app)
+async function startVoice() {
+  if (voiceActive) return;
+
+  try {
+    voiceStream = await navigator.mediaDevices.getUserMedia({
+      audio: { echoCancellation: true, noiseSuppression: true }
+    });
+  } catch (err) {
+    const name = err instanceof DOMException ? err.name : '';
+    if (name === 'NotAllowedError' || name === 'SecurityError') {
+      showToast('⚠ Microphone access denied. Enable it in System Preferences.', 'error', 8000);
+    } else if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+      showToast('⚠ No microphone found.', 'error', 5000);
+    } else {
+      showToast(`⚠ Microphone error: ${err.message}`, 'error', 5000);
+    }
+    return;
+  }
+
+  // Set up AudioContext + AnalyserNode for silence detection
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  voiceAudioCtx = new AudioCtx();
+  voiceAnalyser = voiceAudioCtx.createAnalyser();
+  voiceAnalyser.fftSize = 256;
+  const source = voiceAudioCtx.createMediaStreamSource(voiceStream);
+  source.connect(voiceAnalyser);
+
+  // Set up MediaRecorder
+  const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/wav']
+    .find(t => MediaRecorder.isTypeSupported(t)) || '';
+  voiceRecorder = new MediaRecorder(voiceStream, mimeType ? { mimeType } : undefined);
+  voiceAudioChunks = [];
+
+  voiceRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) voiceAudioChunks.push(e.data);
+  };
+
+  voiceRecorder.onstop = () => {
+    cleanupVoiceStream();
+    if (voiceAudioChunks.length === 0) {
+      showToast('No audio recorded', 'info', 3000);
+      btnVoice.classList.remove('listening');
+      voiceTranscript.classList.remove('show');
+      return;
+    }
+    const blob = new Blob(voiceAudioChunks, { type: voiceRecorder.mimeType || 'audio/webm' });
+    voiceAudioChunks = [];
+    processVoiceAudio(blob);
+  };
+
+  voiceActive = true;
+  voiceHeardSpeech = false;
+  voiceStartTime = Date.now();
+  btnVoice.classList.add('listening');
+  voiceTranscriptLabel.textContent = 'Listening...';
+  voiceTranscriptText.textContent = '';
+  voiceTranscript.classList.add('show');
+
+  voiceRecorder.start();
+
+  // Start silence detection loop (matching Hermes desktop: RMS threshold 0.075)
+  const dataArray = new Uint8Array(voiceAnalyser.fftSize);
+  let lastSpeechTime = Date.now();
+
+  function checkAudioLevel() {
+    if (!voiceActive) return;
+    voiceAnalyser.getByteTimeDomainData(dataArray);
+    let sum = 0;
+    for (let i = 0; i < dataArray.length; i++) {
+      const val = dataArray[i] - 128;
+      sum += val * val;
+    }
+    const rms = Math.sqrt(sum / dataArray.length);
+    const normalizedLevel = Math.min(1, rms / 42);
+
+    // Update level indicator in transcript bar
+    if (voiceTranscriptText && !voiceTranscriptText.textContent) {
+      const bars = Math.round(normalizedLevel * 20);
+      voiceTranscriptText.textContent = '█'.repeat(bars) + '░'.repeat(20 - bars);
+      voiceTranscriptText.classList.add('interim');
+    }
+
+    const elapsed = Date.now() - voiceStartTime;
+
+    if (normalizedLevel >= VOICE_SILENCE_RMS_THRESHOLD) {
+      // Speech detected
+      voiceHeardSpeech = true;
+      lastSpeechTime = Date.now();
+    } else if (voiceHeardSpeech && (Date.now() - lastSpeechTime) >= VOICE_SILENCE_MS) {
+      // Silence after speech — auto-stop
+      console.log('[voice] Silence detected, stopping');
+      stopVoiceRecording();
+      return;
+    } else if (!voiceHeardSpeech && elapsed >= VOICE_IDLE_SILENCE_MS) {
+      // Idle timeout — no speech at all
+      console.log('[voice] Idle timeout, stopping');
+      stopVoiceRecording();
+      return;
+    }
+
+    if (elapsed >= VOICE_MAX_RECORDING_MS) {
+      console.log('[voice] Max recording time reached');
+      stopVoiceRecording();
+      return;
+    }
+
+    voiceAnimFrame = requestAnimationFrame(checkAudioLevel);
+  }
+
+  voiceAnimFrame = requestAnimationFrame(checkAudioLevel);
+}
+
+function stopVoiceRecording() {
+  if (voiceRecorder && voiceRecorder.state === 'recording') {
+    voiceRecorder.stop();
+  } else {
+    cleanupVoiceStream();
+  }
+}
+
+function cleanupVoiceStream() {
+  voiceActive = false;
+  if (voiceAnimFrame) { cancelAnimationFrame(voiceAnimFrame); voiceAnimFrame = null; }
+  if (voiceSilenceTimer) { clearTimeout(voiceSilenceTimer); voiceSilenceTimer = null; }
+  if (voiceStream) { voiceStream.getTracks().forEach(t => t.stop()); voiceStream = null; }
+  if (voiceAudioCtx) { voiceAudioCtx.close().catch(() => {}); voiceAudioCtx = null; }
+  voiceAnalyser = null;
+  voiceRecorder = null;
+  btnVoice.classList.remove('listening');
+}
+
+function stopVoice() {
+  cleanupVoiceStream();
+  voiceTranscript.classList.remove('show');
+}
+
+function toggleVoice() {
+  if (voiceActive) {
+    stopVoice();
+  } else {
+    startVoice();
+  }
+}
+
+// Mic button click
+btnVoice.addEventListener('click', (e) => {
+  e.preventDefault();
+  e.stopPropagation();
+  toggleVoice();
+});
+
+// Ctrl+B keyboard shortcut (standalone, not Cmd/Ctrl+Shift)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'b' && e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey) {
+    e.preventDefault();
+    toggleVoice();
+  }
+});
+
