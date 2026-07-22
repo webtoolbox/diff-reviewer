@@ -133,6 +133,26 @@
     }
     #file-filter-dropdown .filter-actions .btn-apply:hover { background: #2ea043; }
 
+    /* File name filter input */
+    .file-name-filter-wrapper {
+      padding: 8px 12px; border-bottom: 1px solid #21262d;
+      position: relative;
+    }
+    .file-name-filter-wrapper .search-icon {
+      position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+      pointer-events: none; display: flex; align-items: center;
+    }
+    .file-name-filter-wrapper .search-icon svg {
+      width: 14px; height: 14px; stroke: #484f58; fill: none;
+    }
+    #file-name-filter {
+      width: 100%; background: #0d1117; border: 1px solid #30363d;
+      border-radius: 8px; color: #c9d1d9; padding: 6px 10px 6px 30px;
+      font-size: 13px; outline: none;
+    }
+    #file-name-filter:focus { border-color: #58a6ff; }
+    #file-name-filter::placeholder { color: #484f58; }
+
     /* PR dropdown */
     #pr-dropdown {
       display: none; position: fixed; z-index: 1001;
@@ -739,6 +759,28 @@
       padding: 6px 16px; border-radius: 8px; cursor: pointer; font-size: 13px;
     }
     .prefs-btn-cancel:hover { background: #30363d; }
+
+    /* @mention dropdown */
+    #mention-dropdown {
+      display: none; position: fixed; z-index: 2000;
+      background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      max-height: 240px; overflow-y: auto;
+    }
+    #mention-dropdown::-webkit-scrollbar { width: 6px; }
+    #mention-dropdown::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    #mention-dropdown::-webkit-scrollbar-track { background: #161b22; }
+    .mention-item {
+      padding: 6px 12px; display: flex; align-items: center; gap: 8px;
+      cursor: pointer; transition: background 0.1s; font-size: 13px; color: #c9d1d9;
+    }
+    .mention-item:hover, .mention-item.active { background: #1f2937; }
+    .mention-avatar {
+      width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0;
+    }
+    .mention-username {
+      font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px;
+    }
   </style>
 </head>
 <body>
@@ -787,12 +829,15 @@
   </div>
 
   <div id="file-filter-dropdown">
+    <div class="file-name-filter-wrapper">
+      <span class="search-icon"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+      <input type="text" id="file-name-filter" placeholder="Filter files by name...">
+    </div>
     <div class="filter-header">Filter by File Extension</div>
     <div class="filter-list" id="filter-list"></div>
     <div class="filter-actions">
       <button id="filter-select-all">All</button>
       <button id="filter-select-none">None</button>
-      <button id="filter-apply" class="btn-apply">Apply</button>
     </div>
   </div>
 

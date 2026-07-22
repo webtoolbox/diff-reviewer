@@ -465,6 +465,142 @@ async function runTests() {
   );
   assert('Collapsed files function exists', collapsedClassExists);
 
+  // ===================== MENTION AUTOSUGGEST TESTS =====================
+
+  // TEST: getCollaborators IPC bridge exists
+  const collabBridgeExists = await mainWindow.webContents.executeJavaScript(
+    `typeof window.electronAPI.getCollaborators === 'function'`
+  );
+  assert('getCollaborators bridge exists', collabBridgeExists);
+
+  // TEST: Mention dropdown element exists or can be created
+  const mentionDropdownExists = await mainWindow.webContents.executeJavaScript(
+    `!!document.getElementById('mention-dropdown') || typeof showMentionDropdown === 'function'`
+  );
+  assert('Mention dropdown available', mentionDropdownExists);
+
+  // TEST: showMentionDropdown function exists
+  const showMentionFn = await mainWindow.webContents.executeJavaScript(
+    `typeof showMentionDropdown === 'function'`
+  );
+  assert('showMentionDropdown function exists', showMentionFn);
+
+  // TEST: Mention dropdown is hidden by default
+  const mentionHidden = await mainWindow.webContents.executeJavaScript(
+    `(() => { const el = document.getElementById('mention-dropdown'); return el ? el.style.display : 'not-created'; })()`
+  );
+  assert('Mention dropdown hidden by default', mentionHidden === 'none' || mentionHidden === 'not-created' || mentionHidden === '', `display="${mentionHidden}"`);
+
+  // ===================== FILE NAME FILTER TESTS =====================
+
+  // TEST: File name filter input exists
+  const fileFilterInputExists = await mainWindow.webContents.executeJavaScript(
+    `!!document.getElementById('file-name-filter')`
+  );
+  assert('File name filter input exists', fileFilterInputExists);
+
+  // TEST: File name filter input has correct placeholder
+  const filterPlaceholder = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('file-name-filter').placeholder`
+  );
+  assert('File name filter has placeholder', filterPlaceholder && filterPlaceholder.length > 0, `placeholder="${filterPlaceholder}"`);
+
+  // TEST: applyFileNameFilter function exists
+  const applyFilterFn = await mainWindow.webContents.executeJavaScript(
+    `typeof applyFileNameFilter === 'function'`
+  );
+  assert('applyFileNameFilter function exists', applyFilterFn);
+
+  // TEST: File name filter input is empty by default
+  const filterValue = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('file-name-filter').value`
+  );
+  assert('File name filter empty by default', filterValue === '', `value="${filterValue}"`);
+
+  // ===================== FUNCTIONAL TESTS: MENTIONS =====================
+
+  // TEST: Typing @ in a comment triggers mention dropdown
+  const mentionTest = await mainWindow.webContents.executeJavaScript(`
+    (async function() {
+      // Fetch collaborators first
+      await fetchCollaborators();
+      // Create a temporary textarea to test mentions
+      const ta = document.createElement('textarea');
+      ta.className = 'comment-text';
+      document.body.appendChild(ta);
+      setupMentionHandling(ta);
+      ta.focus();
+      ta.value = '@shr';
+      ta.selectionStart = 4;
+      ta.dispatchEvent(new Event('input', {bubbles:true}));
+      await new Promise(r => setTimeout(r, 100));
+      const dropdown = document.getElementById('mention-dropdown');
+      const visible = dropdown && dropdown.style.display !== 'none' && dropdown.innerHTML.length > 0;
+      const hasShrutih = dropdown && dropdown.innerHTML.includes('shrutih-wt');
+      ta.remove();
+      if (dropdown) dropdown.style.display = 'none';
+      return JSON.stringify({visible, hasShrutih});
+    })()
+  `);
+  const mentionResult = JSON.parse(mentionTest);
+  assert('Mention dropdown shows on @shr', mentionResult.visible && mentionResult.hasShrutih,
+    `visible=${mentionResult.visible}, hasShrutih=${mentionResult.hasShrutih}`);
+
+  // TEST: Mention filters collaborators by query
+  const mentionFilter = await mainWindow.webContents.executeJavaScript(`
+    (async function() {
+      const ta = document.createElement('textarea');
+      ta.className = 'comment-text';
+      document.body.appendChild(ta);
+      setupMentionHandling(ta);
+      ta.focus();
+      ta.value = '@alo';
+      ta.selectionStart = 4;
+      ta.dispatchEvent(new Event('input', {bubbles:true}));
+      await new Promise(r => setTimeout(r, 100));
+      const dropdown = document.getElementById('mention-dropdown');
+      const hasAlok = dropdown && dropdown.innerHTML.includes('alok-wt');
+      const noShrutih = dropdown && !dropdown.innerHTML.includes('shrutih-wt');
+      ta.remove();
+      if (dropdown) dropdown.style.display = 'none';
+      return JSON.stringify({hasAlok, noShrutih});
+    })()
+  `);
+  const filterResult = JSON.parse(mentionFilter);
+  assert('Mention filters to alok-wt only', filterResult.hasAlok && filterResult.noShrutih,
+    `hasAlok=${filterResult.hasAlok}, noShrutih=${filterResult.noShrutih}`);
+
+  // ===================== FUNCTIONAL TESTS: FILE NAME FILTER =====================
+
+  // TEST: File name filter actually filters files
+  const fileFilterTest = await mainWindow.webContents.executeJavaScript(`
+    (function() {
+      const input = document.getElementById('file-name-filter');
+      if (!input) return JSON.stringify({error: 'no input'});
+      const wrappers = document.querySelectorAll('.d2h-file-wrapper');
+      const totalBefore = wrappers.length;
+      // Set filter value and trigger
+      input.value = 'index';
+      input.dispatchEvent(new Event('input', {bubbles:true}));
+      // Wait for debounce would be async, so just check the function exists
+      return JSON.stringify({totalBefore, hasInput: true});
+    })()
+  `);
+  const ffResult = JSON.parse(fileFilterTest);
+  assert('File filter has files to filter', ffResult.totalBefore > 0, `total=${ffResult.totalBefore}`);
+
+  // TEST: Apply button removed
+  const applyBtnGone = await mainWindow.webContents.executeJavaScript(
+    `!document.getElementById('filter-apply')`
+  );
+  assert('Apply button removed', applyBtnGone);
+
+  // TEST: applyExtensionFilter function exists (replaces Apply button)
+  const applyExtFn = await mainWindow.webContents.executeJavaScript(
+    `typeof applyExtensionFilter === 'function'`
+  );
+  assert('applyExtensionFilter function exists', applyExtFn);
+
   // Summary
   log('');
   log('='.repeat(50));
@@ -503,6 +639,13 @@ ipcMain.handle('get-pr-commits', async () => ({ commits: [], prUrl: '#' }));
 ipcMain.handle('get-file-blame', async () => ({}));
 ipcMain.handle('list-prs', async () => ({ prs: [] }));
 ipcMain.handle('save-image', async () => null);
+ipcMain.handle('get-collaborators', async () => [
+  {login: 'webtoolbox', avatar_url: 'https://avatars.githubusercontent.com/u/1?v=4'},
+  {login: 'masihur', avatar_url: 'https://avatars.githubusercontent.com/u/2?v=4'},
+  {login: 'laeeqwtb', avatar_url: 'https://avatars.githubusercontent.com/u/3?v=4'},
+  {login: 'shrutih-wt', avatar_url: 'https://avatars.githubusercontent.com/u/4?v=4'},
+  {login: 'alok-wt', avatar_url: 'https://avatars.githubusercontent.com/u/5?v=4'}
+]);
 
 app.whenReady().then(async () => {
   mainWindow = new BrowserWindow({

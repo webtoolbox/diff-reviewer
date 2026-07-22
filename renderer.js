@@ -8,6 +8,7 @@ let parsedDiff = null;
 let aiTagPrefix = '@Hermes';
 let fileCommentCounts = {};
 let currentCommentIndex = -1; // For batch navigation
+let collaborators = []; // GitHub collaborators for @mentions
 
 // DOM elements
 const diffContainer = document.getElementById('diff-container');
@@ -314,7 +315,7 @@ function openFileCommentDialog(wrapper, fileName) {
   header.parentNode.insertBefore(formDiv, header.nextSibling);
 
   const ta = formDiv.querySelector('textarea');
-  if (ta) ta.focus();
+  if (ta) { ta.focus(); setupMentionHandling(ta); }
 
   formDiv.querySelector('#comment-cancel').addEventListener('click', closeCommentDialog);
   formDiv.querySelector('#comment-submit').addEventListener('click', submitComment);
@@ -407,6 +408,7 @@ function openCommentDialog(lineElement, btnElement, isRight, event) {
   if (ta) {
     ta.focus();
     setupImagePaste(ta);
+    setupMentionHandling(ta);
   }
 
   formRow.querySelector('#comment-cancel').addEventListener('click', closeCommentDialog);
@@ -510,7 +512,7 @@ function editComment(marker) {
     marker.parentNode.replaceChild(formDiv, marker);
 
     const ta = formDiv.querySelector('textarea');
-    if (ta) { ta.focus(); ta.selectionStart = ta.value.length; }
+    if (ta) { ta.focus(); ta.selectionStart = ta.value.length; setupMentionHandling(ta); }
 
     formDiv.querySelector('#comment-cancel').addEventListener('click', () => {
       formDiv.parentNode.replaceChild(marker, formDiv);
@@ -559,7 +561,7 @@ function editComment(marker) {
     marker.parentNode.replaceChild(formRow, marker);
 
     const ta = formRow.querySelector('textarea');
-    if (ta) { ta.focus(); ta.selectionStart = ta.value.length; }
+    if (ta) { ta.focus(); ta.selectionStart = ta.value.length; setupMentionHandling(ta); }
 
     formRow.querySelector('#comment-cancel').addEventListener('click', () => {
       formRow.parentNode.replaceChild(marker, formRow);
@@ -911,6 +913,7 @@ window.electronAPI.onLoadDiff((data) => {
 window.electronAPI.getConfig().then((config) => {
   if (config.prNumber) prNumberInput.value = config.prNumber;
   if (config.aiTagPrefix) aiTagPrefix = config.aiTagPrefix;
+  fetchCollaborators();
 }).catch(() => {});
 
 // ===================== IMAGE PASTE =====================
@@ -971,6 +974,162 @@ function setupImagePaste(textarea) {
       handleImageFile(files[0]);
     }
   });
+}
+
+// ===================== @MENTION / COLLABORATOR TAGGING =====================
+
+const mentionState = {
+  active: false,
+  textarea: null,
+  query: '',
+  startIndex: -1,
+  selectedIndex: 0,
+  filtered: [],
+  dropdown: null
+};
+
+async function fetchCollaborators() {
+  try {
+    collaborators = await window.electronAPI.getCollaborators();
+  } catch (e) {
+    collaborators = [];
+  }
+}
+
+function setupMentionHandling(textarea) {
+  textarea.addEventListener('input', onMentionInput);
+  textarea.addEventListener('keydown', onMentionKeydown);
+  textarea.addEventListener('blur', () => {
+    setTimeout(() => hideMentionDropdown(), 200);
+  });
+}
+
+function onMentionInput(e) {
+  const textarea = e.target;
+  const value = textarea.value;
+  const cursorPos = textarea.selectionStart;
+
+  // Find @ before cursor, bounded by space/newline/start
+  let atIndex = -1;
+  for (let i = cursorPos - 1; i >= 0; i--) {
+    if (value[i] === '@') {
+      atIndex = i;
+      break;
+    }
+    if (value[i] === ' ' || value[i] === '\n') break;
+  }
+
+  if (atIndex === -1) {
+    hideMentionDropdown();
+    return;
+  }
+
+  const query = value.substring(atIndex + 1, cursorPos);
+  if (query.includes(' ') || query.includes('\n')) {
+    hideMentionDropdown();
+    return;
+  }
+
+  mentionState.query = query;
+  mentionState.startIndex = atIndex;
+  mentionState.textarea = textarea;
+
+  const filtered = collaborators.filter(c =>
+    c.login.toLowerCase().includes(query.toLowerCase())
+  ).slice(0, 10);
+
+  if (filtered.length === 0) {
+    hideMentionDropdown();
+    return;
+  }
+
+  mentionState.filtered = filtered;
+  mentionState.selectedIndex = 0;
+  mentionState.active = true;
+
+  showMentionDropdown(textarea, filtered);
+}
+
+function showMentionDropdown(textarea, items) {
+  if (!mentionState.dropdown) {
+    mentionState.dropdown = document.createElement('div');
+    mentionState.dropdown.id = 'mention-dropdown';
+    document.body.appendChild(mentionState.dropdown);
+  }
+
+  const rect = textarea.getBoundingClientRect();
+  const dropdown = mentionState.dropdown;
+
+  dropdown.style.top = (rect.bottom + 4) + 'px';
+  dropdown.style.left = rect.left + 'px';
+  dropdown.style.minWidth = Math.min(rect.width, 300) + 'px';
+
+  dropdown.innerHTML = items.map((item, i) => `
+    <div class="mention-item${i === 0 ? ' active' : ''}" data-index="${i}" data-login="${escapeHtml(item.login)}">
+      <img class="mention-avatar" src="${item.avatar_url}" alt="">
+      <span class="mention-username">${escapeHtml(item.login)}</span>
+    </div>
+  `).join('');
+
+  dropdown.style.display = 'block';
+
+  // Add click handlers
+  dropdown.querySelectorAll('.mention-item').forEach(el => {
+    el.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      selectMention(el.dataset.login);
+    });
+  });
+}
+
+function hideMentionDropdown() {
+  mentionState.active = false;
+  if (mentionState.dropdown) {
+    mentionState.dropdown.style.display = 'none';
+  }
+}
+
+function onMentionKeydown(e) {
+  if (!mentionState.active) return;
+
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation(); // Don't close the comment dialog
+    hideMentionDropdown();
+  } else if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    mentionState.selectedIndex = Math.min(mentionState.selectedIndex + 1, mentionState.filtered.length - 1);
+    updateMentionHighlight();
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    mentionState.selectedIndex = Math.max(mentionState.selectedIndex - 1, 0);
+    updateMentionHighlight();
+  } else if (e.key === 'Enter' || e.key === 'Tab') {
+    e.preventDefault();
+    selectMention(mentionState.filtered[mentionState.selectedIndex].login);
+  }
+}
+
+function updateMentionHighlight() {
+  if (!mentionState.dropdown) return;
+  mentionState.dropdown.querySelectorAll('.mention-item').forEach((el, i) => {
+    el.classList.toggle('active', i === mentionState.selectedIndex);
+  });
+  const activeEl = mentionState.dropdown.querySelector('.mention-item.active');
+  if (activeEl) activeEl.scrollIntoView({ block: 'nearest' });
+}
+
+function selectMention(login) {
+  const textarea = mentionState.textarea;
+  const value = textarea.value;
+  const before = value.substring(0, mentionState.startIndex);
+  const after = value.substring(textarea.selectionStart);
+
+  textarea.value = before + '@' + login + ' ' + after;
+  textarea.selectionStart = textarea.selectionEnd = (before + '@' + login + ' ').length;
+
+  hideMentionDropdown();
+  textarea.focus();
 }
 
 // ===================== COMMENT NAVIGATION =====================
@@ -1271,7 +1430,7 @@ const fileFilterDropdown = document.getElementById('file-filter-dropdown');
 const filterList = document.getElementById('filter-list');
 const filterSelectAll = document.getElementById('filter-select-all');
 const filterSelectNone = document.getElementById('filter-select-none');
-const filterApply = document.getElementById('filter-apply');
+
 let fileFilterOpen = false;
 let activeExtensions = [];
 let allExtensionsInDiff = [];
@@ -1354,6 +1513,11 @@ function openFileFilterDropdown() {
   }
   filterList.innerHTML = html;
 
+  // Auto-apply on checkbox change
+  filterList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', applyExtensionFilter);
+  });
+
   // Update button state
   updateFilterButtonState();
 }
@@ -1370,6 +1534,7 @@ filterSelectAll.addEventListener('click', () => {
   filterList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.checked = true;
   });
+  applyExtensionFilter();
 });
 
 // Select none
@@ -1377,10 +1542,11 @@ filterSelectNone.addEventListener('click', () => {
   filterList.querySelectorAll('input[type="checkbox"]').forEach(cb => {
     cb.checked = false;
   });
+  applyExtensionFilter();
 });
 
-// Apply filter
-filterApply.addEventListener('click', () => {
+// Apply extension filter (called on checkbox change, select all/none)
+function applyExtensionFilter() {
   const selected = [];
   filterList.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
     selected.push(cb.value);
@@ -1389,20 +1555,76 @@ filterApply.addEventListener('click', () => {
   const allChecked = selected.length === allExtensionsInDiff.length;
   activeExtensions = allChecked ? null : selected;
   updateFilterButtonState();
-  closeFileFilterDropdown();
 
   // Re-render the diff with filtered extensions
   if (currentDiffContent) {
     renderFilteredDiff();
   }
-});
+}
 
 // Close dropdown when clicking outside
 document.addEventListener('click', (e) => {
-  if (fileFilterOpen && !fileFilterDropdown.contains(e.target) && e.target !== btnFileFilter) {
+  if (fileFilterOpen && !fileFilterDropdown.contains(e.target) && e.target !== btnFileFilter && e.target !== document.getElementById('file-name-filter')) {
     closeFileFilterDropdown();
   }
 });
+
+// ===================== FILE NAME FILTER =====================
+
+const fileNameFilterInput = document.getElementById('file-name-filter');
+let fileNameFilterDebounceTimer = null;
+let currentNameFilter = '';
+
+// Debounced input handler (200ms)
+fileNameFilterInput.addEventListener('input', () => {
+  clearTimeout(fileNameFilterDebounceTimer);
+  fileNameFilterDebounceTimer = setTimeout(() => {
+    currentNameFilter = fileNameFilterInput.value.trim().toLowerCase();
+    applyFileNameFilter();
+  }, 200);
+});
+
+// Prevent dropdown from closing when clicking inside the input
+fileNameFilterInput.addEventListener('click', (e) => {
+  e.stopPropagation();
+});
+
+// Apply the combined name + extension filter
+function applyFileNameFilter() {
+  const fileWrappers = diffContainer.querySelectorAll('.d2h-file-wrapper');
+  const fileListLinks = document.querySelectorAll('.d2h-file-list .d2h-file-link');
+
+  fileWrappers.forEach(wrapper => {
+    const fileNameEl = wrapper.querySelector('.d2h-file-name');
+    if (!fileNameEl) return;
+    const fileName = fileNameEl.textContent.trim().toLowerCase();
+    const matchesName = !currentNameFilter || fileName.includes(currentNameFilter);
+    wrapper.style.display = matchesName ? '' : 'none';
+  });
+
+  // Also hide/show corresponding file list entries
+  fileListLinks.forEach(link => {
+    const linkName = link.textContent.trim().toLowerCase();
+    const matchesName = !currentNameFilter || linkName.includes(currentNameFilter);
+    const listItem = link.closest('li') || link.parentElement;
+    if (listItem) {
+      listItem.style.display = matchesName ? '' : 'none';
+    }
+  });
+}
+
+// Apply name filter after extension filter renders
+const origRenderFilteredDiff = typeof renderFilteredDiff === 'function' ? renderFilteredDiff : null;
+if (origRenderFilteredDiff) {
+  const _origRenderFilteredDiff = renderFilteredDiff;
+  renderFilteredDiff = function() {
+    _origRenderFilteredDiff.call(this);
+    // Re-apply name filter after re-render
+    if (currentNameFilter) {
+      applyFileNameFilter();
+    }
+  };
+}
 
 // Store current diff content for re-rendering
 let currentDiffContent = null;

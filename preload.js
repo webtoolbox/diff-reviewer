@@ -24,5 +24,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getNextPr: (prNumber) => ipcRenderer.invoke('get-next-pr', prNumber),
   onLoadDiff: (callback) => ipcRenderer.on('load-diff', (event, data) => callback(data)),
   onTriggerOpenFile: (callback) => ipcRenderer.on('trigger-open-file', () => callback()),
-  onOpenPreferences: (callback) => ipcRenderer.on('open-preferences', () => callback())
+  onOpenPreferences: (callback) => ipcRenderer.on('open-preferences', () => callback()),
+  getCollaborators: () => ipcRenderer.invoke('get-collaborators')
 });

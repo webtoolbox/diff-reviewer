@@ -949,6 +949,32 @@ ipcMain.handle('get-file-blame', async (event, { prNumber, filePath }) => {
   }
 });
 
+// Collaborators cache (session-level)
+let collaboratorsCache = null;
+
+ipcMain.handle('get-collaborators', async () => {
+  if (collaboratorsCache) return collaboratorsCache;
+
+  const owner = appConfig.repoOwner;
+  const repo = appConfig.repoName;
+  if (!owner || !repo) return [];
+
+  try {
+    const stdout = await execPromise(
+      `gh api "repos/${owner}/${repo}/collaborators?per_page=100"`
+    );
+    const collabs = JSON.parse(stdout || '[]');
+    collaboratorsCache = collabs.map(c => ({
+      login: c.login,
+      avatar_url: c.avatar_url
+    }));
+    return collaboratorsCache;
+  } catch (err) {
+    console.error('[collaborators] fetch failed:', err.message);
+    return [];
+  }
+});
+
 ipcMain.handle('get-config', async () => ({
   chatId: aiChatId,
   prNumber: cliPrNumber,
