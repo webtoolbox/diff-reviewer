@@ -264,6 +264,24 @@
       max-height: 400px; min-width: 360px; overflow-y: auto;
     }
     #pr-dropdown.open { display: block; }
+    #pr-dropdown .pr-search-wrapper {
+      padding: 8px 12px; border-bottom: 1px solid #21262d;
+      position: sticky; top: 0; background: #161b22; z-index: 1;
+    }
+    #pr-dropdown .pr-search-wrapper .search-icon {
+      position: absolute; left: 20px; top: 50%; transform: translateY(-50%);
+      pointer-events: none; display: flex; align-items: center;
+    }
+    #pr-dropdown .pr-search-wrapper .search-icon svg {
+      width: 14px; height: 14px; stroke: #484f58; fill: none;
+    }
+    #pr-dropdown .pr-search-wrapper input {
+      width: 100%; background: #0d1117; border: 1px solid #30363d;
+      border-radius: 8px; color: #c9d1d9; padding: 6px 10px 6px 30px;
+      font-size: 13px; outline: none;
+    }
+    #pr-dropdown .pr-search-wrapper input:focus { border-color: #58a6ff; }
+    #pr-dropdown .pr-search-wrapper input::placeholder { color: #484f58; }
     #pr-dropdown .pr-dropdown-header {
       padding: 10px 14px; border-bottom: 1px solid #30363d;
       font-size: 12px; color: #8b949e; font-weight: 600;
@@ -1075,6 +1093,10 @@
   </div>
 
   <div id="pr-dropdown">
+    <div class="pr-search-wrapper">
+      <span class="search-icon"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+      <input type="text" id="pr-search" placeholder="Search PRs by title, author, or number...">
+    </div>
     <div class="pr-dropdown-header">Pull Requests Pending Review</div>
     <div class="pr-loading">Loading...</div>
   </div>

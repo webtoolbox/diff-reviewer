@@ -1412,23 +1412,34 @@ async function openPrDropdown() {
   prDropdown.classList.add('open');
   prDropdownOpen = true;
 
-  // Show cached results immediately if available
-  const now = Date.now();
-  const cacheValid = cachedPrList && (now - cachedPrListTime < PR_CACHE_TTL);
+  // Clear search when opening
+  const searchInput = document.getElementById('pr-search');
+  if (searchInput) searchInput.value = '';
 
-  if (cacheValid) {
+  // Show cached results immediately if available, else fetch
+  if (cachedPrList) {
     renderPrList(cachedPrList);
-    // Refresh in background
-    refreshPrList();
   } else {
-    prDropdown.innerHTML = '<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-loading">Loading...</div>';
+    prDropdown.innerHTML = `
+      <div class="pr-search-wrapper">
+        <span class="search-icon"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" id="pr-search" placeholder="Search PRs by title, author, or number...">
+      </div>
+      <div class="pr-dropdown-header">Pull Requests Pending Review</div>
+      <div class="pr-loading">Loading...</div>`;
     // Get checked repos
     const reposToFetch = checkedRepos.length > 0
       ? checkedRepos.map(r => ({ owner: r.owner, name: r.name }))
       : [{ owner: appConfig.repoOwner || '', name: appConfig.repoName || '' }];
     const { prs, error } = await window.electronAPI.listAllPrs({ repos: reposToFetch });
     if (error) {
-      prDropdown.innerHTML = `<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-empty">Error: ${escapeHtml(error)}</div>`;
+      prDropdown.innerHTML = `
+        <div class="pr-search-wrapper">
+          <span class="search-icon"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+          <input type="text" id="pr-search" placeholder="Search PRs by title, author, or number...">
+        </div>
+        <div class="pr-dropdown-header">Pull Requests Pending Review</div>
+        <div class="pr-empty">Error: ${escapeHtml(error)}</div>`;
       return;
     }
     cachedPrList = prs;
@@ -1447,20 +1458,48 @@ async function refreshPrList() {
     if (error || !prs) return;
     cachedPrList = prs;
     cachedPrListTime = Date.now();
-    if (prDropdownOpen) renderPrList(prs);
+    if (prDropdownOpen) {
+      const searchInput = document.getElementById('pr-search');
+      renderPrList(prs, searchInput ? searchInput.value : '');
+    }
   } catch {}
 }
 
 // Render PR list into the dropdown
-function renderPrList(prs) {
+function renderPrList(prs, filterText) {
+  const searchValue = (filterText || '').toLowerCase().trim();
+
+  // Filter PRs by search text (title, author, number, repo)
+  let filtered = prs || [];
+  if (searchValue) {
+    filtered = prs.filter(pr => {
+      const title = (pr.title || '').toLowerCase();
+      const author = (pr.author || '').toLowerCase();
+      const num = String(pr.number);
+      const repo = (pr.repo || '').toLowerCase();
+      return title.includes(searchValue) || author.includes(searchValue) || num.includes(searchValue) || repo.includes(searchValue);
+    });
+  }
+
   if (!prs || prs.length === 0) {
-    prDropdown.innerHTML = '<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-empty">No PRs match your filter</div>';
+    prDropdown.innerHTML = `
+      <div class="pr-search-wrapper">
+        <span class="search-icon"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+        <input type="text" id="pr-search" placeholder="Search PRs by title, author, or number...">
+      </div>
+      <div class="pr-dropdown-header">Pull Requests Pending Review</div>
+      <div class="pr-empty">No PRs match your filter</div>`;
     return;
   }
 
   const hasMultipleRepos = checkedRepos.length > 1;
-  let html = `<div class="pr-dropdown-header">Pull Requests Pending Review (${prs.length})</div>`;
-  for (const pr of prs) {
+  let html = `
+    <div class="pr-search-wrapper">
+      <span class="search-icon"><svg viewBox="0 0 24 24" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+      <input type="text" id="pr-search" placeholder="Search PRs by title, author, or number..." value="${escapeHtml(searchValue)}">
+    </div>
+    <div class="pr-dropdown-header">Pull Requests Pending Review (${filtered.length}${searchValue ? ' of ' + prs.length : ''})</div>`;
+  for (const pr of filtered) {
     const date = new Date(pr.created).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const draft = pr.draft ? '<span class="pr-draft">DRAFT</span>' : '';
     const repoLabel = hasMultipleRepos && pr.repo ? `<span class="pr-repo-label"> ${escapeHtml(pr.repo)}</span>` : '';
@@ -1481,7 +1520,29 @@ function renderPrList(prs) {
         </button>
       </div>`;
   }
+  if (filtered.length === 0 && searchValue) {
+    html += `<div class="pr-empty">No PRs match "${escapeHtml(searchValue)}"</div>`;
+  }
   prDropdown.innerHTML = html;
+
+  // Wire up search input
+  const searchInput = document.getElementById('pr-search');
+  if (searchInput) {
+    searchInput.focus();
+    let searchDebounce = null;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        renderPrList(cachedPrList, searchInput.value);
+      }, 200);
+    });
+    // Prevent clicks inside search from closing dropdown
+    searchInput.addEventListener('click', (e) => e.stopPropagation());
+    // Restore cursor position after re-render
+    if (searchValue) {
+      searchInput.setSelectionRange(searchValue.length, searchValue.length);
+    }
+  }
 
   // Wire up click handlers
   prDropdown.querySelectorAll('.pr-item-content').forEach(content => {
@@ -1735,7 +1796,7 @@ let currentDiffFilePath = null;
 let currentPrTitle = '';
 let cachedPrList = null;
 let cachedPrListTime = 0;
-const PR_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours
+// PR cache never expires — only invalidated by repo changes or manual refresh
 let currentPrNumber = null;
 let currentPrBody = '';
 
