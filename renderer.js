@@ -1358,6 +1358,19 @@ async function loadPrByNumber(prNumber) {
     currentPrNumber = prNumber;
     currentPrBody = result.prBody || '';
 
+    // Download GitHub-attached images to local files (they need auth to access)
+    if (currentPrBody.includes('github.com/user-attachments/')) {
+      try {
+        const dlResult = await window.electronAPI.downloadGithubImages({ prBody: currentPrBody });
+        if (dlResult.prBody) currentPrBody = dlResult.prBody;
+      } catch (err) {
+        console.warn('[pr] Image download failed:', err.message);
+      }
+    }
+
+    // Detect before/after image pairs in PR body
+    beforeAfterPairs = detectBeforeAfterPairs(currentPrBody);
+
     // Update title bar
     document.title = currentPrTitle ? `${currentPrTitle} — Diff Reviewer` : `Diff Reviewer — PR #${prNumber}`;
     // Store PR number
@@ -1970,7 +1983,11 @@ function updatePrInfoBar(prNumber, prTitle, result) {
   // Title line + author/assignees line
   let html = '';
   if (prTitle) {
-    html += `<div class="pr-title-line"><span class="pr-title-text" title="Click to show PR description">${escapeHtml(prTitle)}</span><span class="pr-desc-toggle" title="Show PR description"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span></div>`;
+    let compareIcon = '';
+    if (beforeAfterPairs && beforeAfterPairs.length > 0) {
+      compareIcon = '<span class="pr-compare-toggle" title="View before/after screenshots"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="8" height="18" rx="1"/><rect x="14" y="3" width="8" height="18" rx="1"/></svg></span>';
+    }
+    html += `<div class="pr-title-line"><span class="pr-title-text" title="Click to show PR description">${escapeHtml(prTitle)}</span><span class="pr-desc-toggle" title="Show PR description"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9l6 6 6-6"/></svg></span>${compareIcon}</div>`;
   }
   // Second line: author + assignees
   if (result) {
@@ -1990,6 +2007,10 @@ function updatePrInfoBar(prNumber, prTitle, result) {
   const titleText = document.querySelector('.pr-title-text');
   if (toggleBtn) toggleBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePrDescDropdown(); });
   if (titleText) titleText.addEventListener('click', (e) => { e.stopPropagation(); togglePrDescDropdown(); });
+
+  // Add compare toggle handler
+  const compareBtn = document.querySelector('.pr-compare-toggle');
+  if (compareBtn) compareBtn.addEventListener('click', (e) => { e.stopPropagation(); openCompareSlideshow(0); });
 
   // Inject review info into the diff2html file list area (right-aligned, same row as files changed)
   if (result) {
@@ -2086,6 +2107,248 @@ function closePrDescDropdown() {
   const toggleBtn = document.querySelector('.pr-desc-toggle');
   if (toggleBtn) toggleBtn.classList.remove('open');
 }
+// ===================== BEFORE/AFTER IMAGE COMPARISON =====================
+
+let beforeAfterPairs = [];
+let compareOverlayIndex = 0;
+let compareZoomedSide = null; // null | 'before' | 'after'
+
+// Detect before/after image pairs from raw markdown text
+function detectBeforeAfterPairs(prBody) {
+  if (!prBody || typeof prBody !== 'string') return [];
+
+  const pairs = [];
+  const lines = prBody.split('\n');
+  // Match both markdown ![alt](url) and HTML <img src="url"> tags (http, https, or file://)
+  const imageUrlRegex = /!\[.*?\]\(((?:https?|file):\/\/[^\\s)]+)\)|src="((?:https?|file):\/\/[^"]+)"/;
+
+  // Pattern 1: Look for "before" label followed by image, then "after" label followed by image
+  // Supports: ## Before, ### Before, **Before:**, *Before:* etc.
+  for (let i = 0; i < lines.length - 1; i++) {
+    const line = lines[i].trim();
+    const nextLine = lines[i + 1] ? lines[i + 1].trim() : '';
+
+    // Check if current line has a "before" indicator
+    const beforeMatch = line.match(/^#{1,6}\s+.*before/i) ||
+                        line.match(/^\*{1,2}\s*before\s*:?\s*\*{0,2}/i) ||
+                        line.match(/^before\s*:/i);
+
+    if (beforeMatch) {
+      // Look for an image URL on this line or the next few lines (up to 3 lines ahead)
+      let beforeUrl = null;
+      for (let j = i; j <= Math.min(i + 3, lines.length - 1); j++) {
+        const imgMatch = lines[j].match(imageUrlRegex);
+        if (imgMatch) {
+          beforeUrl = imgMatch[1] || imgMatch[2]; // markdown or HTML
+          break;
+        }
+      }
+
+      if (beforeUrl) {
+        // Now look for "after" label within the next ~10 lines
+        for (let k = i + 1; k <= Math.min(i + 10, lines.length - 1); k++) {
+          const afterLine = lines[k].trim();
+          const afterMatch = afterLine.match(/^#{1,6}\s+.*after/i) ||
+                             afterLine.match(/^\*{1,2}\s*after\s*:?\s*\*{0,2}/i) ||
+                             afterLine.match(/^after\s*:/i);
+
+          if (afterMatch) {
+            // Look for image URL on this line or next few lines
+            for (let m = k; m <= Math.min(k + 3, lines.length - 1); m++) {
+              const afterImgMatch = lines[m].match(imageUrlRegex);
+              if (afterImgMatch) {
+                pairs.push({ before: beforeUrl, after: afterImgMatch[1] || afterImgMatch[2] });
+                break;
+              }
+            }
+            break; // Found the after pair, stop looking
+          }
+        }
+      }
+    }
+  }
+
+  // Pattern 2: If no pairs found via headings, try sequential image detection
+  // Look for images near standalone "before"/"after" text
+  if (pairs.length === 0) {
+    let pendingBefore = null;
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+
+      // Check for standalone before/after text (not headings)
+      const isBeforeLine = /^(?:before|after)\s*:?\s*$/i.test(line) ||
+                           /^\*{1,2}\s*(?:before|after)\s*:?\s*\*{0,2}$/i.test(line);
+
+      if (isBeforeLine) {
+        const isBefore = /^before/i.test(line);
+        // Look for image on this line or next 2 lines
+        for (let j = i; j <= Math.min(i + 2, lines.length - 1); j++) {
+          const imgMatch = lines[j].match(imageUrlRegex);
+          if (imgMatch) {
+            const url = imgMatch[1] || imgMatch[2]; // markdown or HTML
+            if (isBefore) {
+              pendingBefore = url;
+            } else if (pendingBefore) {
+              pairs.push({ before: pendingBefore, after: url });
+              pendingBefore = null;
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  return pairs;
+}
+
+// Open before/after comparison slideshow
+function openCompareSlideshow(index) {
+  if (!beforeAfterPairs || beforeAfterPairs.length === 0) return;
+  compareOverlayIndex = index || 0;
+  compareZoomedSide = null;
+
+  // Remove any existing overlay
+  closeCompareSlideshow();
+
+  const overlay = document.createElement('div');
+  overlay.className = 'compare-overlay';
+  overlay.id = 'compare-overlay';
+
+  overlay.innerHTML = `
+    <div class="compare-header">
+      <span class="compare-counter">${compareOverlayIndex + 1} of ${beforeAfterPairs.length}</span>
+      <button class="compare-close" title="Close (Esc)">✕</button>
+    </div>
+    <div class="compare-body">
+      <button class="compare-nav-btn prev" title="Previous (←)">◀</button>
+      <div class="compare-side" id="compare-before-side" title="Click to zoom">
+        <div class="compare-label">Before</div>
+        <img src="${escapeHtml(beforeAfterPairs[compareOverlayIndex].before)}" alt="Before">
+      </div>
+      <div class="compare-divider"></div>
+      <div class="compare-side" id="compare-after-side" title="Click to zoom">
+        <div class="compare-label">After</div>
+        <img src="${escapeHtml(beforeAfterPairs[compareOverlayIndex].after)}" alt="After">
+      </div>
+      <button class="compare-nav-btn next" title="Next (→)">▶</button>
+    </div>
+    <div class="compare-hint">← → Navigate &nbsp;|&nbsp; Click image to zoom &nbsp;|&nbsp; Esc Close</div>
+  `;
+
+  document.body.appendChild(overlay);
+
+  // Event handlers
+  overlay.querySelector('.compare-close').addEventListener('click', closeCompareSlideshow);
+  overlay.querySelector('.compare-nav-btn.prev').addEventListener('click', () => navigateCompare('prev'));
+  overlay.querySelector('.compare-nav-btn.next').addEventListener('click', () => navigateCompare('next'));
+  overlay.querySelector('#compare-before-side').addEventListener('click', (e) => {
+    if (e.target.tagName !== 'IMG') toggleCompareZoom('before');
+  });
+  overlay.querySelector('#compare-after-side').addEventListener('click', (e) => {
+    if (e.target.tagName !== 'IMG') toggleCompareZoom('after');
+  });
+  overlay.querySelector('#compare-before-side img').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleCompareZoom('before');
+  });
+  overlay.querySelector('#compare-after-side img').addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleCompareZoom('after');
+  });
+
+  updateCompareNavButtons();
+}
+
+function closeCompareSlideshow() {
+  const overlay = document.getElementById('compare-overlay');
+  if (overlay) overlay.remove();
+  compareZoomedSide = null;
+}
+
+function navigateCompare(direction) {
+  if (direction === 'prev' && compareOverlayIndex > 0) {
+    compareOverlayIndex--;
+  } else if (direction === 'next' && compareOverlayIndex < beforeAfterPairs.length - 1) {
+    compareOverlayIndex++;
+  } else {
+    return;
+  }
+  compareZoomedSide = null;
+
+  const overlay = document.getElementById('compare-overlay');
+  if (!overlay) return;
+
+  const pair = beforeAfterPairs[compareOverlayIndex];
+  overlay.querySelector('.compare-counter').textContent = `${compareOverlayIndex + 1} of ${beforeAfterPairs.length}`;
+  const beforeImg = overlay.querySelector('#compare-before-side img');
+  const afterImg = overlay.querySelector('#compare-after-side img');
+  if (beforeImg) beforeImg.src = pair.before;
+  if (afterImg) afterImg.src = pair.after;
+
+  // Reset zoom state
+  const beforeSide = overlay.querySelector('#compare-before-side');
+  const afterSide = overlay.querySelector('#compare-after-side');
+  if (beforeSide) { beforeSide.classList.remove('zoomed', 'zoomed-active'); }
+  if (afterSide) { afterSide.classList.remove('zoomed', 'zoomed-active'); }
+
+  updateCompareNavButtons();
+}
+
+function updateCompareNavButtons() {
+  const overlay = document.getElementById('compare-overlay');
+  if (!overlay) return;
+  const prevBtn = overlay.querySelector('.compare-nav-btn.prev');
+  const nextBtn = overlay.querySelector('.compare-nav-btn.next');
+  if (prevBtn) prevBtn.disabled = compareOverlayIndex <= 0;
+  if (nextBtn) nextBtn.disabled = compareOverlayIndex >= beforeAfterPairs.length - 1;
+}
+
+function toggleCompareZoom(side) {
+  const overlay = document.getElementById('compare-overlay');
+  if (!overlay) return;
+
+  const beforeSide = overlay.querySelector('#compare-before-side');
+  const afterSide = overlay.querySelector('#compare-after-side');
+
+  if (compareZoomedSide === side) {
+    // Unzoom
+    compareZoomedSide = null;
+    beforeSide.classList.remove('zoomed', 'zoomed-active');
+    afterSide.classList.remove('zoomed', 'zoomed-active');
+  } else {
+    // Zoom the clicked side
+    compareZoomedSide = side;
+    if (side === 'before') {
+      beforeSide.classList.add('zoomed-active');
+      beforeSide.classList.remove('zoomed');
+      afterSide.classList.add('zoomed');
+      afterSide.classList.remove('zoomed-active');
+    } else {
+      afterSide.classList.add('zoomed-active');
+      afterSide.classList.remove('zoomed');
+      beforeSide.classList.add('zoomed');
+      beforeSide.classList.remove('zoomed-active');
+    }
+  }
+}
+
+// Keyboard handler for compare overlay
+document.addEventListener('keydown', (e) => {
+  const overlay = document.getElementById('compare-overlay');
+  if (!overlay) return;
+
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    closeCompareSlideshow();
+  } else if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    navigateCompare('prev');
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    navigateCompare('next');
+  }
+});
 
 // Close PR desc dropdown on click outside
 document.addEventListener('click', (e) => {

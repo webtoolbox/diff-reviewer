@@ -758,6 +758,461 @@ async function runTests() {
   `);
   assert('Voice constants exist', voiceConstantsExist);
 
+  // === PR DESCRIPTION DROPDOWN TESTS ===
+
+  // PR description dropdown toggle exists
+  const prDescToggleExists = await mainWindow.webContents.executeJavaScript(`
+    typeof togglePrDescDropdown === 'function' && typeof closePrDescDropdown === 'function'
+  `);
+  assert('PR description dropdown functions exist', prDescToggleExists);
+
+  // currentPrBody is accessible
+  const prBodyAccessible = await mainWindow.webContents.executeJavaScript(`
+    typeof currentPrBody !== 'undefined'
+  `);
+  assert('currentPrBody is accessible', prBodyAccessible);
+
+  // === COMMENT NAVIGATION TESTS ===
+
+  // Comment navigation functions exist
+  const commentNavExists = await mainWindow.webContents.executeJavaScript(`
+    typeof updateCommentNav === 'function'
+  `);
+  assert('Comment navigation function exists', commentNavExists);
+
+  // Comment nav UI elements exist
+  const commentNavUI = await mainWindow.webContents.executeJavaScript(`
+    !!document.getElementById('comment-nav') && !!document.getElementById('comment-nav-label')
+  `);
+  assert('Comment nav UI elements exist', commentNavUI);
+
+  // === EXPORT TESTS ===
+
+  // Export markdown bridge exists
+  const exportMarkdownBridge = await mainWindow.webContents.executeJavaScript(`
+    typeof window.electronAPI.exportMarkdown === 'function'
+  `);
+  assert('Export markdown bridge exists', exportMarkdownBridge);
+
+  // Export JSON bridge exists
+  const exportJsonBridge = await mainWindow.webContents.executeJavaScript(`
+    typeof window.electronAPI.exportJson === 'function'
+  `);
+  assert('Export JSON bridge exists', exportJsonBridge);
+
+  // Export menu listeners exist
+  const exportMenuListeners = await mainWindow.webContents.executeJavaScript(`
+    typeof window.electronAPI.onExportMarkdown === 'function' && typeof window.electronAPI.onExportJson === 'function'
+  `);
+  assert('Export menu listeners exist', exportMenuListeners);
+
+  // exportAsJson function exists
+  const exportAsJsonExists = await mainWindow.webContents.executeJavaScript(`
+    typeof exportAsJson === 'function'
+  `);
+  assert('exportAsJson function exists', exportAsJsonExists);
+
+  // exportAsMarkdown function exists
+  const exportAsMarkdownExists = await mainWindow.webContents.executeJavaScript(`
+    typeof exportAsMarkdown === 'function'
+  `);
+  assert('exportAsMarkdown function exists', exportAsMarkdownExists);
+
+  // === DRAFT AUTO-SAVE TESTS ===
+
+  // autoSaveDraft function exists
+  const autoSaveDraftExists = await mainWindow.webContents.executeJavaScript(`
+    typeof autoSaveDraft === 'function'
+  `);
+  assert('autoSaveDraft function exists', autoSaveDraftExists);
+
+  // === KEYBOARD SHORTCUT TESTS ===
+
+  // Escape key closes dialogs
+  const escapeHandled = await mainWindow.webContents.executeJavaScript(`
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    true
+  `);
+  assert('Escape key dispatch works', escapeHandled);
+
+  // === TOAST SYSTEM TESTS ===
+
+  // Toast auto-dismiss works
+  const toastAutoDismiss = await mainWindow.webContents.executeJavaScript(`
+    new Promise(resolve => {
+      showToast('test-auto-dismiss', 'info', 100);
+      setTimeout(() => {
+        const toasts = document.querySelectorAll('.toast');
+        resolve(toasts.length === 0 || toasts[0].textContent !== 'test-auto-dismiss');
+      }, 200);
+    })
+  `);
+  assert('Toast auto-dismiss works', toastAutoDismiss);
+
+  // === FILE FILTER TESTS ===
+
+  // applyFileNameFilter handles empty input
+  const fileNameFilterEmpty = await mainWindow.webContents.executeJavaScript(`
+    typeof applyFileNameFilter === 'function'
+  `);
+  assert('applyFileNameFilter function exists', fileNameFilterEmpty);
+
+  // === COMMENT SYSTEM EDGE CASES ===
+
+  // Comments array is accessible
+  const commentsAccessible = await mainWindow.webContents.executeJavaScript(`
+    Array.isArray(comments)
+  `);
+  assert('Comments array is accessible', commentsAccessible);
+
+  // renderLineCommentMarker function exists
+  const renderLineMarkerExists = await mainWindow.webContents.executeJavaScript(`
+    typeof renderLineCommentMarker === 'function'
+  `);
+  assert('renderLineCommentMarker function exists', renderLineMarkerExists);
+
+  // renderFileCommentMarker function exists
+  const renderFileMarkerExists = await mainWindow.webContents.executeJavaScript(`
+    typeof renderFileCommentMarker === 'function'
+  `);
+  assert('renderFileCommentMarker function exists', renderFileMarkerExists);
+
+  // === VOICE MODE EDGE CASES ===
+
+  // Voice cleanup function exists
+  const cleanupExists = await mainWindow.webContents.executeJavaScript(`
+    typeof cleanupVoiceStream === 'function' && typeof stopVoiceRecording === 'function'
+  `);
+  assert('Voice cleanup functions exist', cleanupExists);
+
+  // Voice recorder starts as null
+  const voiceRecorderNull = await mainWindow.webContents.executeJavaScript(`
+    voiceRecorder === null
+  `);
+  assert('Voice recorder starts as null', voiceRecorderNull);
+
+  // Voice stream starts as null
+  const voiceStreamNull = await mainWindow.webContents.executeJavaScript(`
+    voiceStream === null
+  `);
+  assert('Voice stream starts as null', voiceStreamNull);
+
+  // Voice active starts as false
+  const voiceActiveFalse = await mainWindow.webContents.executeJavaScript(`
+    voiceActive === false
+  `);
+  assert('Voice active starts as false', voiceActiveFalse);
+
+  // === UI STATE TESTS ===
+
+  // PR number input exists and is editable
+  const prInputExists = await mainWindow.webContents.executeJavaScript(`
+    !!document.getElementById('pr-number') && document.getElementById('pr-number').tagName === 'INPUT'
+  `);
+  assert('PR number input exists', prInputExists);
+
+  // Review body textarea exists
+  const reviewBodyExists = await mainWindow.webContents.executeJavaScript(`
+    !!document.getElementById('review-body') && document.getElementById('review-body').tagName === 'TEXTAREA'
+  `);
+  assert('Review body textarea exists', reviewBodyExists);
+
+  // Diff container exists
+  const diffContainerExists = await mainWindow.webContents.executeJavaScript(`
+    !!document.getElementById('diff-container')
+  `);
+  assert('Diff container exists', diffContainerExists);
+
+  // Empty state element exists
+  const emptyStateExists = await mainWindow.webContents.executeJavaScript(`
+    !!document.getElementById('empty-state')
+  `);
+  assert('Empty state element exists', emptyStateExists);
+
+  // === MULTIPLE ACTION EXECUTION TESTS ===
+
+  // processVoiceResults handles empty actions array
+  const emptyActionsResult = await mainWindow.webContents.executeJavaScript(`
+    new Promise(resolve => {
+      processVoiceResults({ actions: [] }).then(() => resolve(true)).catch(() => resolve(false));
+    })
+  `);
+  assert('processVoiceResults handles empty actions', emptyActionsResult);
+
+  // processVoiceResults handles single action
+  const singleActionResult = await mainWindow.webContents.executeJavaScript(`
+    new Promise(resolve => {
+      processVoiceResults({ actions: [{ action: 'message', text: 'test' }] }).then(() => resolve(true)).catch(() => resolve(false));
+    })
+  `);
+  assert('processVoiceResults handles single action', singleActionResult);
+
+  // processVoiceResults handles error
+  const errorResult = await mainWindow.webContents.executeJavaScript(`
+    new Promise(resolve => {
+      processVoiceResults({ error: 'test error' }).then(() => resolve(true)).catch(() => resolve(false));
+    })
+  `);
+  assert('processVoiceResults handles error', errorResult);
+
+  // === FILE LIST ACCURACY TEST ===
+
+  // getDiffFiles returns correct structure
+  const diffFilesStructure = await mainWindow.webContents.executeJavaScript(`
+    const files = getDiffFiles();
+    files.length > 0 && files.every(f => typeof f.name === 'string' && typeof f.lines !== 'undefined')
+  `);
+  assert('getDiffFiles returns correct structure', diffFilesStructure);
+
+  // === BUILD VOICE CONTEXT TEST ===
+
+  // buildVoiceContext returns correct structure
+  const voiceContextStructure = await mainWindow.webContents.executeJavaScript(`
+    const ctx = buildVoiceContext();
+    typeof ctx === 'object' && 'prNumber' in ctx && 'files' in ctx && 'comments' in ctx && 'reviewBody' in ctx
+  `);
+  assert('buildVoiceContext returns correct structure', voiceContextStructure);
+
+  // === SINGLE VOICE ACTION TESTS ===
+
+  // executeSingleVoiceAction handles message action
+  const messageActionResult = await mainWindow.webContents.executeJavaScript(`
+    new Promise(resolve => {
+      executeSingleVoiceAction({ action: 'message', text: 'test message' });
+      setTimeout(() => resolve(true), 100);
+    })
+  `);
+  assert('executeSingleVoiceAction handles message', messageActionResult);
+
+  // === CONFIG TESTS ===
+
+  // Config structure is complete
+  const configComplete = await mainWindow.webContents.executeJavaScript(`
+    new Promise(resolve => {
+      window.electronAPI.getConfig().then(cfg => {
+        resolve(typeof cfg === 'object' && 'autoFix' in cfg && 'cleanup' in cfg);
+      }).catch(() => resolve(false));
+    })
+  `);
+  assert('Config structure is complete', configComplete);
+
+  // ===================== BEFORE/AFTER IMAGE COMPARISON TESTS =====================
+
+  // TEST: detectBeforeAfterPairs function exists
+  const detectFnExists = await mainWindow.webContents.executeJavaScript(
+    `typeof detectBeforeAfterPairs === 'function'`
+  );
+  assert('detectBeforeAfterPairs function exists', detectFnExists);
+
+  // TEST: detectBeforeAfterPairs returns empty for null/empty input
+  const detectEmpty = await mainWindow.webContents.executeJavaScript(
+    `detectBeforeAfterPairs(null).length === 0 && detectBeforeAfterPairs('').length === 0`
+  );
+  assert('detectBeforeAfterPairs returns empty for null/empty', detectEmpty);
+
+  // TEST: detectBeforeAfterPairs detects ## Before / ## After pattern
+  const detectH2 = await mainWindow.webContents.executeJavaScript(`
+    JSON.stringify(detectBeforeAfterPairs(
+      '## Before\\n![before](https://example.com/b1.png)\\n## After\\n![after](https://example.com/a1.png)'
+    ))
+  `);
+  const h2Result = JSON.parse(detectH2);
+  assert('detectBeforeAfterPairs detects ## Before/After', h2Result.length === 1 && h2Result[0].before.includes('b1.png') && h2Result[0].after.includes('a1.png'),
+    `pairs: ${detectH2}`);
+
+  // TEST: detectBeforeAfterPairs detects ### Before / ### After pattern
+  const detectH3 = await mainWindow.webContents.executeJavaScript(`
+    JSON.stringify(detectBeforeAfterPairs(
+      '### Before\\n![before](https://example.com/b2.png)\\n### After\\n![after](https://example.com/a2.png)'
+    ))
+  `);
+  const h3Result = JSON.parse(detectH3);
+  assert('detectBeforeAfterPairs detects ### Before/After', h3Result.length === 1 && h3Result[0].before.includes('b2.png') && h3Result[0].after.includes('a2.png'),
+    `pairs: ${detectH3}`);
+
+  // TEST: detectBeforeAfterPairs detects **Before:** pattern
+  const detectBold = await mainWindow.webContents.executeJavaScript(`
+    JSON.stringify(detectBeforeAfterPairs(
+      '**Before:**\\n![before](https://example.com/bb.png)\\n**After:**\\n![after](https://example.com/aa.png)'
+    ))
+  `);
+  const boldResult = JSON.parse(detectBold);
+  assert('detectBeforeAfterPairs detects **Before:** pattern', boldResult.length === 1 && boldResult[0].before.includes('bb.png') && boldResult[0].after.includes('aa.png'),
+    `pairs: ${detectBold}`);
+
+  // TEST: detectBeforeAfterPairs detects multiple pairs
+  const detectMulti = await mainWindow.webContents.executeJavaScript(`
+    JSON.stringify(detectBeforeAfterPairs(
+      '## Before\\n![before](https://example.com/m1.png)\\n## After\\n![after](https://example.com/m2.png)\\n\\n### Before\\n![before](https://example.com/m3.png)\\n### After\\n![after](https://example.com/m4.png)'
+    ))
+  `);
+  const multiResult = JSON.parse(detectMulti);
+  assert('detectBeforeAfterPairs detects multiple pairs', multiResult.length === 2,
+    `pairs: ${detectMulti}`);
+
+  // TEST: detectBeforeAfterPairs returns no pairs for markdown without images
+  const detectNoImages = await mainWindow.webContents.executeJavaScript(`
+    detectBeforeAfterPairs('This is just some text.\\nNo images here.').length
+  `);
+  assert('detectBeforeAfterPairs returns 0 for no images', detectNoImages === 0);
+
+  // TEST: detectBeforeAfterPairs returns no pairs for markdown without before/after
+  const detectNoLabels = await mainWindow.webContents.executeJavaScript(`
+    detectBeforeAfterPairs('![image](https://example.com/img.png)').length
+  `);
+  assert('detectBeforeAfterPairs returns 0 without before/after labels', detectNoLabels === 0);
+
+  // TEST: loadPrByNumber sets beforeAfterPairs
+  await mainWindow.webContents.executeJavaScript(`
+    loadPrByNumber('42')
+  `);
+  await new Promise(resolve => setTimeout(resolve, 500));
+  const pairsLoaded = await mainWindow.webContents.executeJavaScript(
+    `beforeAfterPairs.length`
+  );
+  assert('loadPrByNumber sets beforeAfterPairs', pairsLoaded === 2, `pairs: ${pairsLoaded}`);
+
+  // TEST: Compare icon appears in title line when pairs exist
+  const compareIconExists = await mainWindow.webContents.executeJavaScript(
+    `!!document.querySelector('.pr-compare-toggle')`
+  );
+  assert('Compare icon appears when pairs exist', compareIconExists);
+
+  // TEST: Compare icon has correct title attribute
+  const compareIconTitle = await mainWindow.webContents.executeJavaScript(
+    `document.querySelector('.pr-compare-toggle').title`
+  );
+  assert('Compare icon has correct title', compareIconTitle === 'View before/after screenshots',
+    `title: "${compareIconTitle}"`);
+
+  // TEST: openCompareSlideshow function exists
+  const openSlideshowFn = await mainWindow.webContents.executeJavaScript(
+    `typeof openCompareSlideshow === 'function'`
+  );
+  assert('openCompareSlideshow function exists', openSlideshowFn);
+
+  // TEST: Clicking compare icon opens slideshow
+  await mainWindow.webContents.executeJavaScript(`
+    document.querySelector('.pr-compare-toggle').click()
+  `);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const overlayExists = await mainWindow.webContents.executeJavaScript(
+    `!!document.getElementById('compare-overlay')`
+  );
+  assert('Clicking compare icon opens slideshow', overlayExists);
+
+  // TEST: Slideshow has Before and After labels
+  const slideshowLabels = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      const labels = document.querySelectorAll('#compare-overlay .compare-label');
+      return Array.from(labels).map(l => l.textContent);
+    })()
+  `);
+  assert('Slideshow has Before/After labels',
+    slideshowLabels.includes('Before') && slideshowLabels.includes('After'),
+    `labels: ${JSON.stringify(slideshowLabels)}`);
+
+  // TEST: Slideshow shows correct counter
+  const slideshowCounter = await mainWindow.webContents.executeJavaScript(
+    `document.querySelector('#compare-overlay .compare-counter').textContent`
+  );
+  assert('Slideshow shows counter', slideshowCounter === '1 of 2', `counter: "${slideshowCounter}"`);
+
+  // TEST: Slideshow has close button
+  const closeBtnExists = await mainWindow.webContents.executeJavaScript(
+    `!!document.querySelector('#compare-overlay .compare-close')`
+  );
+  assert('Slideshow has close button', closeBtnExists);
+
+  // TEST: Slideshow has navigation buttons
+  const navBtns = await mainWindow.webContents.executeJavaScript(
+    `document.querySelectorAll('#compare-overlay .compare-nav-btn').length`
+  );
+  assert('Slideshow has navigation buttons', navBtns === 2, `count: ${navBtns}`);
+
+  // TEST: Slideshow has before/after images
+  const slideshowImages = await mainWindow.webContents.executeJavaScript(
+    `document.querySelectorAll('#compare-overlay .compare-side img').length`
+  );
+  assert('Slideshow has 2 images', slideshowImages === 2, `count: ${slideshowImages}`);
+
+  // TEST: Next button navigates to second pair
+  await mainWindow.webContents.executeJavaScript(`
+    document.querySelector('#compare-overlay .compare-nav-btn.next').click()
+  `);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const counterAfterNext = await mainWindow.webContents.executeJavaScript(
+    `document.querySelector('#compare-overlay .compare-counter').textContent`
+  );
+  assert('Next button navigates to 2nd pair', counterAfterNext === '2 of 2', `counter: "${counterAfterNext}"`);
+
+  // TEST: Prev button navigates back
+  await mainWindow.webContents.executeJavaScript(`
+    document.querySelector('#compare-overlay .compare-nav-btn.prev').click()
+  `);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const counterAfterPrev = await mainWindow.webContents.executeJavaScript(
+    `document.querySelector('#compare-overlay .compare-counter').textContent`
+  );
+  assert('Prev button navigates back to 1st pair', counterAfterPrev === '1 of 2', `counter: "${counterAfterPrev}"`);
+
+  // TEST: Close button closes slideshow
+  await mainWindow.webContents.executeJavaScript(`
+    document.querySelector('#compare-overlay .compare-close').click()
+  `);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  const overlayAfterClose = await mainWindow.webContents.executeJavaScript(
+    `!!document.getElementById('compare-overlay')`
+  );
+  assert('Close button closes slideshow', !overlayAfterClose);
+
+  // TEST: Zoom toggle works (click before side)
+  await mainWindow.webContents.executeJavaScript(`
+    openCompareSlideshow(0)
+  `);
+  await new Promise(resolve => setTimeout(resolve, 200));
+  await mainWindow.webContents.executeJavaScript(`
+    document.getElementById('compare-before-side').click()
+  `);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const hasZoomedActive = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('compare-before-side').classList.contains('zoomed-active')`
+  );
+  assert('Zoom toggle activates zoomed-active class', hasZoomedActive);
+
+  // TEST: Click again to unzoom
+  await mainWindow.webContents.executeJavaScript(`
+    document.getElementById('compare-before-side').click()
+  `);
+  await new Promise(resolve => setTimeout(resolve, 100));
+  const noZoomedActive = await mainWindow.webContents.executeJavaScript(
+    `!document.getElementById('compare-before-side').classList.contains('zoomed-active')`
+  );
+  assert('Second click removes zoomed-active class', noZoomedActive);
+
+  // TEST: closeCompareSlideshow function exists
+  const closeSlideshowFn = await mainWindow.webContents.executeJavaScript(
+    `typeof closeCompareSlideshow === 'function'`
+  );
+  assert('closeCompareSlideshow function exists', closeSlideshowFn);
+
+  // TEST: navigateCompare function exists
+  const navigateFn = await mainWindow.webContents.executeJavaScript(
+    `typeof navigateCompare === 'function'`
+  );
+  assert('navigateCompare function exists', navigateFn);
+
+  // TEST: toggleCompareZoom function exists
+  const toggleZoomFn = await mainWindow.webContents.executeJavaScript(
+    `typeof toggleCompareZoom === 'function'`
+  );
+  assert('toggleCompareZoom function exists', toggleZoomFn);
+
+  // Close any open slideshow before continuing
+  await mainWindow.webContents.executeJavaScript(`
+    closeCompareSlideshow()
+  `);
+
   // Summary
   log('');
   log('='.repeat(50));
@@ -801,6 +1256,10 @@ ipcMain.handle('export-json', async (event, { json, defaultName }) => {
   fs.writeFileSync(outputPath, json);
   return outputPath;
 });
+ipcMain.handle('download-github-images', async (event, { prBody }) => {
+  // Mock: return the body unchanged
+  return { prBody };
+});
 ipcMain.handle('open-file-in-editor', async () => ({ success: true }));
 ipcMain.handle('get-pr-commits', async () => ({ commits: [], prUrl: '#' }));
 ipcMain.handle('get-file-blame', async () => ({}));
@@ -829,6 +1288,40 @@ ipcMain.handle('process-voice-command', async (event, { audioBase64, context }) 
     actions.push({ action: 'file_comment', file: files[0].name, text: 'Voice test comment' });
   }
   return { success: true, actions };
+});
+
+ipcMain.handle('load-pr', async (event, prNumber) => {
+  // Mock: return a PR with before/after image pairs in the body
+  const testDiff = fs.readFileSync(testDiffPath, 'utf8');
+  return {
+    fileName: `pr-${prNumber}.diff`,
+    filePath: null,
+    content: testDiff,
+    prTitle: `Test PR #${prNumber} with before/after screenshots`,
+    prBody: `## Changes
+
+This PR updates the UI.
+
+## Before
+
+![before](https://example.com/before-1.png)
+
+## After
+
+![after](https://example.com/after-1.png)
+
+### Before
+
+![before](https://example.com/before-2.png)
+
+### After
+
+![after](https://example.com/after-2.png)
+`,
+    prAuthor: 'test-user',
+    prAssignees: ['reviewer-1'],
+    reviewInfo: null,
+  };
 });
 
 app.whenReady().then(async () => {

@@ -577,11 +577,21 @@ function createWindow(options = {}) {
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      webSecurity: false
     }
   });
 
   windows.set(windowId, win);
+
+  // Set proper headers for GitHub image requests
+  win.webContents.session.webRequest.onBeforeSendHeaders((details, callback) => {
+    if (details.url.includes('github.com/user-attachments/') || details.url.includes('github.com/')) {
+      details.requestHeaders['Referer'] = 'https://github.com/';
+      details.requestHeaders['Accept'] = 'image/webp,image/apng,image/*,*/*;q=0.8';
+    }
+    callback({ requestHeaders: details.requestHeaders });
+  });
 
   win.loadFile('index.html');
 
@@ -1165,6 +1175,43 @@ ipcMain.handle('export-json', async (event, { json, defaultName }) => {
     return result.filePath;
   }
   return null;
+});
+
+// Download GitHub-attached images to local temp files (for authenticated access)
+ipcMain.handle('download-github-images', async (event, { prBody }) => {
+  if (!prBody) return { prBody: '' };
+  
+  // Find all github.com/user-attachments/assets URLs
+  const urlRegex = /https:\/\/github\.com\/user-attachments\/assets\/[a-f0-9-]+/g;
+  const urls = [...new Set(prBody.match(urlRegex) || [])];
+  
+  if (urls.length === 0) return { prBody };
+  
+  let modifiedBody = prBody;
+  
+  for (const url of urls) {
+    try {
+      const ext = '.png';
+      const localPath = path.join(app.getPath('temp'), `pr-img-${Date.now()}${ext}`);
+      
+      // Download using gh api with authentication
+      const token = execSync('gh auth token', { encoding: 'utf8' }).trim();
+      const response = await fetch(url, {
+        headers: { 'Authorization': `token ${token}` }
+      });
+      
+      if (response.ok) {
+        const buffer = Buffer.from(await response.arrayBuffer());
+        fs.writeFileSync(localPath, buffer);
+        // Replace URL with local file path
+        modifiedBody = modifiedBody.split(url).join(`file://${localPath}`);
+      }
+    } catch (err) {
+      console.error('[image-download] Failed:', url, err.message);
+    }
+  }
+  
+  return { prBody: modifiedBody };
 });
 
 // Get commits for a PR

@@ -1,6 +1,6 @@
 # Diff Reviewer
 
-A desktop app for GitHub PR reviews with desktop AI agent integration, file pre-filtering, and automated agent rule proposals. Speeds up reviews by loading diffs immediately, excluding merge commits, and auto-loading the next PR. Runs on macOS and Linux.
+A desktop AI-native diff reviewer for GitHub PRs with voice commands, before/after design comparison, desktop AI agent integration, file pre-filtering, and automated agent rule proposals. Speeds up reviews by loading diffs immediately, excluding merge commits, and auto-loading the next PR. Runs on macOS and Linux.
 
 ![Main Diff View](screenshots/main-diff-view.jpg)
 
@@ -9,6 +9,10 @@ A desktop app for GitHub PR reviews with desktop AI agent integration, file pre-
 Reviewing PRs on GitHub means clicking into a PR, reading the description, scanning commits and comments, then navigating to the Files Changed tab before you can even see the diff. Diff Reviewer skips all of that — it loads the diff immediately and automatically moves to the next PR when you're done.
 
 **Desktop AI agent integration**: Tag @hermes (or any other agent) in any comment to message a desktop AI agent directly from the review. The agent can help with code analysis, answer questions, or assist with changes. Use @ask to get the response displayed inline in the app.
+
+**Voice commands**: Press Ctrl+B to speak review commands naturally. Add line comments, file comments, approve PRs, request changes, ask questions about code — all via voice. The AI interprets your spoken instructions and executes them on the review.
+
+**Before/after design comparison**: When a PR description contains before/after screenshot pairs, a comparison icon appears next to the title. Click it to open a full-screen slideshow with side-by-side images, navigation arrows, and click-to-zoom for detailed inspection.
 
 **Automated agent rule proposals**: After submitting a review, the app can analyze your feedback against the repo's AGENTS.md rules and propose new rules when needed. This replaces a workflow that was previously done manually — reviewing feedback, identifying gaps in agent rules, and updating the rule files.
 
@@ -21,6 +25,15 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 **Configurable file pre-filtering**: On GitHub, all files are shown by default and you have to manually unselect file types you don't need to review every time. Diff Reviewer lets you configure default file extensions so only relevant files show up. You can also use the file extension filter pane to override that for a specific PR.
 
 ## Features
+
+### AI-Native Features
+- **Voice commands** — press Ctrl+B to speak review commands naturally. Add comments, approve, request changes, ask questions — all via voice. Powered by Hermes STT and LLM interpretation.
+- **Before/after design comparison** — PR descriptions with before/after screenshot pairs get a comparison icon. Click to open a full-screen slideshow with side-by-side images, navigation arrows, and click-to-zoom.
+
+![Before/After Comparison Slideshow](screenshots/before-after-slideshow.png)
+- **Desktop AI agent integration** — tag @hermes (or any other agent) in any comment to message a desktop AI agent directly from the review. Use @ask to get the response displayed inline.
+- **Auto-fix with AI** — when requesting changes, review comments are sent to the Hermes AI agent which creates a new PR with the necessary fixes
+- **Automated agent rule proposals** — after submitting a review, AI analyzes feedback against AGENTS.md and proposes new rules
 
 ### Core Review Features
 - **Side-by-side diff viewing** powered by diff2html
@@ -69,13 +82,12 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 
 - **Image support** — paste (Cmd+V) or drag-and-drop images into comments
 - **S3 upload** — images uploaded to S3 for inline GitHub markdown
-- **Desktop AI agent integration** — tag @hermes (or any other agent) in comments to message a desktop AI agent. Use @ask for inline responses.
 - **User mentions** — type @ in any comment to get an autosuggest dropdown of repo collaborators. Select a collaborator to insert @username. Fetches real collaborators via the GitHub API.
 
 ![Mention Dropdown](screenshots/mention-dropdown.jpg)
 
 ### Auto-fix with AI
-- **Automatic PR creation** — when requesting changes, review comments are sent to the Hermes AI agent which creates a new PR with the necessary fixes
+- **Automatic PR creation** — review comments are sent to the Hermes AI agent which creates a new PR with the necessary fixes
 - **Follows repo guidelines** — the agent follows the AGENTS.md file in the repository
 - **Participant management** — all PR participants (author, assignees, reviewers) except the reviewer are added to the new PR
 - **Configurable** — enable/disable via `autoFix.enabled` in config.json (enabled by default)
@@ -257,7 +269,7 @@ When `since-review` mode is active:
 - **Cmd+O**: Open diff file
 
 ### Exporting
-- Click the 📤 icon in the top bar to export as markdown
+- Go to File > Export Review > As Markdown (Cmd+Shift+E) or As JSON (Cmd+Shift+J)
 - Images are uploaded to S3 (if configured) and included as URLs
 
 ## Data Storage
