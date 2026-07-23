@@ -1,11 +1,29 @@
 const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
-const { execFile, exec } = require('child_process');
+const { execFile, exec, execSync } = require('child_process');
 
 // Track all open windows
 const windows = new Map();
 let windowCounter = 0;
+
+// Fix PATH for Electron (launched from dock doesn't inherit shell PATH)
+const extraPaths = ['/usr/local/bin', '/opt/homebrew/bin', '/usr/bin'];
+const currentPath = process.env.PATH || '';
+const missingPaths = extraPaths.filter(p => !currentPath.includes(p));
+if (missingPaths.length) {
+  process.env.PATH = missingPaths.join(':') + ':' + currentPath;
+}
+
+function execGh(args, opts = {}) {
+  const cmd = `gh ${args}`;
+  return new Promise((resolve, reject) => {
+    exec(cmd, { timeout: opts.timeout || 30000, encoding: 'utf8', maxBuffer: 5 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
+      if (err) reject(err);
+      else resolve(stdout.trim());
+    });
+  });
+}
 
 // Load config: private (~/.config/diff-reviewer/config.json) overrides public (./config.json)
 function loadConfig() {
@@ -761,34 +779,27 @@ ipcMain.handle('list-prs', async () => {
   const filter = appConfig.prFilter || {};
 
   return new Promise((resolve) => {
-    let cmd = `gh api 'repos/${owner}/${repo}/pulls?state=open&per_page=50' --jq '[.[] | {number, title, author: .user.login, created: .created_at, reviewers: [.requested_reviewers[].login], draft}]'`;
-    exec(cmd, { maxBuffer: 5 * 1024 * 1024 }, (err, stdout) => {
-      if (err) {
+    const args = `api 'repos/${owner}/${repo}/pulls?state=open&per_page=50' --jq '[.[] | {number, title, author: .user.login, created: .created_at, reviewers: [.requested_reviewers[].login], draft}]'`;
+    execGh(args, { timeout: 30000 })
+      .then(stdout => {
+        let prs = [];
+        try { prs = JSON.parse(stdout); } catch { resolve({ prs: [], error: 'Failed to parse PR list' }); return; }
+
+        if (filter.reviewRequested) {
+          prs = prs.filter(pr => pr.reviewers && pr.reviewers.includes(owner));
+        }
+        if (filter.titleContains) {
+          const needle = filter.titleContains.toLowerCase();
+          prs = prs.filter(pr => pr.title.toLowerCase().includes(needle));
+        }
+
+        prs.sort((a, b) => new Date(b.created) - new Date(a.created));
+        resolve({ prs });
+      })
+      .catch(err => {
         console.error('[list-prs] failed:', err.message);
         resolve({ prs: [], error: err.message });
-        return;
-      }
-
-      let prs = [];
-      try {
-        prs = JSON.parse(stdout);
-      } catch (e) {
-        resolve({ prs: [], error: 'Failed to parse PR list' });
-        return;
-      }
-
-      if (filter.reviewRequested) {
-        prs = prs.filter(pr => pr.reviewers && pr.reviewers.includes(owner));
-      }
-
-      if (filter.titleContains) {
-        const needle = filter.titleContains.toLowerCase();
-        prs = prs.filter(pr => pr.title.toLowerCase().includes(needle));
-      }
-
-      prs.sort((a, b) => new Date(b.created) - new Date(a.created));
-      resolve({ prs });
-    });
+      });
   });
 });
 

@@ -1617,9 +1617,10 @@ function applyExtensionFilter() {
   filterList.querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
     selected.push(cb.value);
   });
-  // If all extensions in the diff are selected, set to null (show all)
+  // If all or none selected, set to null (show all)
   const allChecked = selected.length === allExtensionsInDiff.length;
-  activeExtensions = allChecked ? null : selected;
+  const noneChecked = selected.length === 0;
+  activeExtensions = (allChecked || noneChecked) ? null : selected;
   updateFilterButtonState();
 
   // Re-render the diff with filtered extensions
