@@ -1469,7 +1469,7 @@ async function refreshPrList() {
 function renderPrList(prs, filterText) {
   const searchValue = (filterText || '').toLowerCase().trim();
 
-  // Filter PRs by search text (title, author, number, repo)
+  // Filter PRs by search text (title, author, number, repo, assignees)
   let filtered = prs || [];
   if (searchValue) {
     filtered = prs.filter(pr => {
@@ -1477,7 +1477,8 @@ function renderPrList(prs, filterText) {
       const author = (pr.author || '').toLowerCase();
       const num = String(pr.number);
       const repo = (pr.repo || '').toLowerCase();
-      return title.includes(searchValue) || author.includes(searchValue) || num.includes(searchValue) || repo.includes(searchValue);
+      const assignees = (pr.assignees || []).join(' ').toLowerCase();
+      return title.includes(searchValue) || author.includes(searchValue) || num.includes(searchValue) || repo.includes(searchValue) || assignees.includes(searchValue);
     });
   }
 
@@ -1503,13 +1504,15 @@ function renderPrList(prs, filterText) {
     const date = new Date(pr.created).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const draft = pr.draft ? '<span class="pr-draft">DRAFT</span>' : '';
     const repoLabel = hasMultipleRepos && pr.repo ? `<span class="pr-repo-label"> ${escapeHtml(pr.repo)}</span>` : '';
+    const assignees = (pr.assignees || []).filter(a => a !== pr.author);
+    const assigneeLabel = assignees.length > 0 ? `<span class="pr-assignees"> → ${assignees.map(a => escapeHtml(a)).join(', ')}</span>` : '';
     html += `
       <div class="pr-item" data-pr="${pr.number}" data-repo="${pr.repo || ''}">
         <div class="pr-item-content">
           <div class="pr-title">${escapeHtml(pr.title)}${draft}</div>
           <div class="pr-meta">
             <span class="pr-number">#${pr.number}</span>
-            <span class="pr-author"> by ${escapeHtml(pr.author)}</span>${repoLabel}
+            <span class="pr-author"> by ${escapeHtml(pr.author)}</span>${assigneeLabel}${repoLabel}
             <span> · ${date}</span>
           </div>
         </div>

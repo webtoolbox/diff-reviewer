@@ -1260,9 +1260,9 @@ async function runTests() {
   const filterByTitle = await mainWindow.webContents.executeJavaScript(`
     (() => {
       cachedPrList = [
-        { number: 1, title: 'Fix login bug', author: 'alice', created: '2026-01-01', repo: 'webtoolbox/Website-Toolbox' },
-        { number: 2, title: 'Add dark mode', author: 'bob', created: '2026-01-02', repo: 'webtoolbox/Website-Toolbox' },
-        { number: 3, title: 'Update README', author: 'charlie', created: '2026-01-03', repo: 'webtoolbox/Website-Toolbox' }
+        { number: 1, title: 'Fix login bug', author: 'alice', created: '2026-01-01', repo: 'webtoolbox/Website-Toolbox', assignees: ['alice', 'bob'] },
+        { number: 2, title: 'Add dark mode', author: 'bob', created: '2026-01-02', repo: 'webtoolbox/Website-Toolbox', assignees: ['dave'] },
+        { number: 3, title: 'Update README', author: 'charlie', created: '2026-01-03', repo: 'webtoolbox/Website-Toolbox', assignees: [] }
       ];
       renderPrList(cachedPrList, 'login');
       const items = document.querySelectorAll('#pr-dropdown .pr-item');
@@ -1274,12 +1274,22 @@ async function runTests() {
   // TEST: renderPrList with filter filters by author
   const filterByAuthor = await mainWindow.webContents.executeJavaScript(`
     (() => {
-      renderPrList(cachedPrList, 'bob');
+      renderPrList(cachedPrList, 'alice');
       const items = document.querySelectorAll('#pr-dropdown .pr-item');
       return items.length;
     })()
   `);
   assert('Search filter by author shows 1 result', filterByAuthor === 1, `count: ${filterByAuthor}`);
+
+  // TEST: renderPrList with filter filters by assignee
+  const filterByAssignee = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      renderPrList(cachedPrList, 'dave');
+      const items = document.querySelectorAll('#pr-dropdown .pr-item');
+      return items.length;
+    })()
+  `);
+  assert('Search filter by assignee shows 1 result', filterByAssignee === 1, `count: ${filterByAssignee}`);
 
   // TEST: renderPrList with filter filters by number
   const filterByNumber = await mainWindow.webContents.executeJavaScript(`
@@ -1405,9 +1415,9 @@ ipcMain.handle('list-repos', async () => ({
 ipcMain.handle('save-repos', async (event, repos) => ({ success: true }));
 ipcMain.handle('list-all-prs', async (event, { repos, filter }) => ({
   prs: [
-    { number: 101, title: 'Fix login bug', author: 'alice', created: '2026-07-20T10:00:00Z', reviewers: ['webtoolbox'], draft: false, repo: 'webtoolbox/Website-Toolbox' },
-    { number: 102, title: 'Add dark mode', author: 'bob', created: '2026-07-21T10:00:00Z', reviewers: [], draft: true, repo: 'webtoolbox/Website-Toolbox' },
-    { number: 103, title: 'Update README', author: 'charlie', created: '2026-07-22T10:00:00Z', reviewers: ['webtoolbox'], draft: false, repo: 'webtoolbox/Website-Toolbox' }
+    { number: 101, title: 'Fix login bug', author: 'alice', created: '2026-07-20T10:00:00Z', reviewers: ['webtoolbox'], assignees: ['alice', 'bob'], draft: false, repo: 'webtoolbox/Website-Toolbox' },
+    { number: 102, title: 'Add dark mode', author: 'bob', created: '2026-07-21T10:00:00Z', reviewers: [], assignees: ['charlie'], draft: true, repo: 'webtoolbox/Website-Toolbox' },
+    { number: 103, title: 'Update README', author: 'charlie', created: '2026-07-22T10:00:00Z', reviewers: ['webtoolbox'], assignees: [], draft: false, repo: 'webtoolbox/Website-Toolbox' }
   ]
 }));
 ipcMain.handle('save-image', async () => null);

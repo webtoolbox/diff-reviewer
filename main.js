@@ -897,7 +897,7 @@ ipcMain.handle('list-all-prs', async (event, { repos, filter }) => {
       let repoPrs = [];
       while (true) {
         const stdout = await execGh(
-          `api 'repos/${owner}/${name}/pulls?state=open&per_page=100&page=${page}' --jq '[.[] | {number, title, author: .user.login, created: .created_at, reviewers: [.requested_reviewers[].login], draft}]'`,
+          `api 'repos/${owner}/${name}/pulls?state=open&per_page=100&page=${page}' --jq '[.[] | {number, title, author: .user.login, created: .created_at, reviewers: [.requested_reviewers[].login], assignees: [.assignees[].login], draft}]'`,
           { timeout: 30000 }
         );
         let batch = [];
