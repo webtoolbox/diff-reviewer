@@ -1213,6 +1213,139 @@ async function runTests() {
     closeCompareSlideshow()
   `);
 
+  // ===================== MULTI-REPO & PR SEARCH TESTS =====================
+
+  // TEST: listRepos IPC bridge exists
+  const listReposBridge = await mainWindow.webContents.executeJavaScript(
+    `typeof window.electronAPI.listRepos === 'function'`
+  );
+  assert('listRepos bridge exists', listReposBridge);
+
+  // TEST: saveRepos IPC bridge exists
+  const saveReposBridge = await mainWindow.webContents.executeJavaScript(
+    `typeof window.electronAPI.saveRepos === 'function'`
+  );
+  assert('saveRepos bridge exists', saveReposBridge);
+
+  // TEST: listAllPrs IPC bridge exists
+  const listAllPrsBridge = await mainWindow.webContents.executeJavaScript(
+    `typeof window.electronAPI.listAllPrs === 'function'`
+  );
+  assert('listAllPrs bridge exists', listAllPrsBridge);
+
+  // TEST: listRepos returns repos
+  const reposResult = await mainWindow.webContents.executeJavaScript(
+    `window.electronAPI.listRepos()`
+  );
+  assert('listRepos returns repos array', reposResult && reposResult.repos && reposResult.repos.length > 0);
+
+  // TEST: listAllPrs returns PRs with repo field
+  const allPrsResult = await mainWindow.webContents.executeJavaScript(
+    `window.electronAPI.listAllPrs({ repos: [{ owner: 'webtoolbox', name: 'Website-Toolbox' }] })`
+  );
+  assert('listAllPrs returns PRs', allPrsResult && allPrsResult.prs && allPrsResult.prs.length === 3);
+  assert('listAllPrs PRs have repo field', allPrsResult.prs[0].repo === 'webtoolbox/Website-Toolbox');
+
+  // TEST: PR dropdown has search input
+  const prSearchExists = await mainWindow.webContents.executeJavaScript(
+    `!!document.getElementById('pr-search')`
+  );
+  // Search input may not exist until dropdown is opened, check DOM structure
+  const prDropdownHasSearchWrapper = await mainWindow.webContents.executeJavaScript(
+    `document.getElementById('pr-dropdown').innerHTML.includes('pr-search')`
+  );
+  assert('PR dropdown has search wrapper in HTML', prDropdownHasSearchWrapper);
+
+  // TEST: renderPrList with filter filters by title
+  const filterByTitle = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      cachedPrList = [
+        { number: 1, title: 'Fix login bug', author: 'alice', created: '2026-01-01', repo: 'webtoolbox/Website-Toolbox' },
+        { number: 2, title: 'Add dark mode', author: 'bob', created: '2026-01-02', repo: 'webtoolbox/Website-Toolbox' },
+        { number: 3, title: 'Update README', author: 'charlie', created: '2026-01-03', repo: 'webtoolbox/Website-Toolbox' }
+      ];
+      renderPrList(cachedPrList, 'login');
+      const items = document.querySelectorAll('#pr-dropdown .pr-item');
+      return items.length;
+    })()
+  `);
+  assert('Search filter by title shows 1 result', filterByTitle === 1, `count: ${filterByTitle}`);
+
+  // TEST: renderPrList with filter filters by author
+  const filterByAuthor = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      renderPrList(cachedPrList, 'bob');
+      const items = document.querySelectorAll('#pr-dropdown .pr-item');
+      return items.length;
+    })()
+  `);
+  assert('Search filter by author shows 1 result', filterByAuthor === 1, `count: ${filterByAuthor}`);
+
+  // TEST: renderPrList with filter filters by number
+  const filterByNumber = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      renderPrList(cachedPrList, '2');
+      const items = document.querySelectorAll('#pr-dropdown .pr-item');
+      return items.length;
+    })()
+  `);
+  assert('Search filter by number shows 1 result', filterByNumber === 1, `count: ${filterByNumber}`);
+
+  // TEST: renderPrList with empty filter shows all
+  const filterEmpty = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      renderPrList(cachedPrList, '');
+      const items = document.querySelectorAll('#pr-dropdown .pr-item');
+      return items.length;
+    })()
+  `);
+  assert('Empty search shows all 3 PRs', filterEmpty === 3, `count: ${filterEmpty}`);
+
+  // TEST: renderPrList with no match shows empty state
+  const filterNoMatch = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      renderPrList(cachedPrList, 'zzzzz');
+      const items = document.querySelectorAll('#pr-dropdown .pr-item');
+      const empty = document.querySelector('#pr-dropdown .pr-empty');
+      return { items: items.length, hasEmpty: !!empty };
+    })()
+  `);
+  assert('No-match search shows 0 items', filterNoMatch.items === 0, `count: ${filterNoMatch.items}`);
+  assert('No-match search shows empty message', filterNoMatch.hasEmpty);
+
+  // TEST: PR cache has no TTL (never expires)
+  const cacheNoTTL = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      return typeof PR_CACHE_TTL === 'undefined';
+    })()
+  `);
+  assert('PR_CACHE_TTL is removed (cache never expires)', cacheNoTTL);
+
+  // TEST: PR dropdown search input has correct placeholder
+  const searchPlaceholder = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      renderPrList(cachedPrList, '');
+      const input = document.getElementById('pr-search');
+      return input ? input.placeholder : 'not found';
+    })()
+  `);
+  assert('Search input has placeholder', searchPlaceholder.includes('Search PRs'), `placeholder: "${searchPlaceholder}"`);
+
+  // TEST: renderPrList shows filtered count
+  const filteredCount = await mainWindow.webContents.executeJavaScript(`
+    (() => {
+      renderPrList(cachedPrList, 'login');
+      const header = document.querySelector('#pr-dropdown .pr-dropdown-header');
+      return header ? header.textContent : '';
+    })()
+  `);
+  assert('Filtered header shows count', filteredCount.includes('1 of 3'), `header: "${filteredCount}"`);
+
+  // Close PR dropdown
+  await mainWindow.webContents.executeJavaScript(`
+    if (typeof closePrDropdown === 'function') closePrDropdown();
+  `);
+
   // Summary
   log('');
   log('='.repeat(50));
@@ -1264,6 +1397,19 @@ ipcMain.handle('open-file-in-editor', async () => ({ success: true }));
 ipcMain.handle('get-pr-commits', async () => ({ commits: [], prUrl: '#' }));
 ipcMain.handle('get-file-blame', async () => ({}));
 ipcMain.handle('list-prs', async () => ({ prs: [] }));
+ipcMain.handle('list-repos', async () => ({
+  repos: [
+    { owner: 'webtoolbox', name: 'Website-Toolbox', checked: true }
+  ]
+}));
+ipcMain.handle('save-repos', async (event, repos) => ({ success: true }));
+ipcMain.handle('list-all-prs', async (event, { repos, filter }) => ({
+  prs: [
+    { number: 101, title: 'Fix login bug', author: 'alice', created: '2026-07-20T10:00:00Z', reviewers: ['webtoolbox'], draft: false, repo: 'webtoolbox/Website-Toolbox' },
+    { number: 102, title: 'Add dark mode', author: 'bob', created: '2026-07-21T10:00:00Z', reviewers: [], draft: true, repo: 'webtoolbox/Website-Toolbox' },
+    { number: 103, title: 'Update README', author: 'charlie', created: '2026-07-22T10:00:00Z', reviewers: ['webtoolbox'], draft: false, repo: 'webtoolbox/Website-Toolbox' }
+  ]
+}));
 ipcMain.handle('save-image', async () => null);
 ipcMain.handle('get-collaborators', async () => [
   {login: 'webtoolbox', avatar_url: 'https://avatars.githubusercontent.com/u/1?v=4'},
