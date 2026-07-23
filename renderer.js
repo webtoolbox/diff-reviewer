@@ -2892,6 +2892,15 @@ function executeSingleVoiceAction(action) {
       break;
     }
 
+    case 'open_pr': {
+      if (action.pr_number || action.prNumber) {
+        const prNum = action.pr_number || action.prNumber;
+        prNumberInput.value = prNum;
+        prNumberInput.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      }
+      break;
+    }
+
     case 'message':
     default: {
       if (action.text) {
