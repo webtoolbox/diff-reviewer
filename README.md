@@ -1,12 +1,11 @@
-# Diff Reviewer
+# PR Reviewer
 
 A desktop AI-native diff reviewer for GitHub PRs with voice commands, before/after design comparison, desktop AI agent integration, file pre-filtering, and automated agent rule proposals. Speeds up reviews by loading diffs immediately, excluding merge commits, and auto-loading the next PR.
 
 ![Main Diff View](screenshots/main-diff-view.jpg)
 
-## Why Diff Reviewer?
-
-Reviewing PRs on GitHub means clicking into a PR, reading the description, scanning commits and comments, then navigating to the Files Changed tab before you can even see the diff. Diff Reviewer skips all of that — it loads the diff immediately and automatically moves to the next PR when you're done.
+## Why PR Reviewer?
+Reviewing PRs on GitHub means clicking into a PR, reading the description, scanning commits and comments, then navigating to the Files Changed tab before you can even see the diff. PR Reviewer skips all of that — it loads the diff immediately and automatically moves to the next PR when you're done.
 
 **Desktop AI agent integration**: Tag @hermes (or any other agent) in any comment to message a desktop AI agent directly from the review. The agent can help with code analysis, answer questions, or assist with changes. Use @ask to get the response displayed inline in the app.
 
@@ -22,10 +21,9 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 
 **Line-level commit attribution**: Hover over any line to see exactly which commit changed it and why. This makes it easy to trace the history of a specific change without digging through git blame.
 
-**Configurable file pre-filtering**: On GitHub, all files are shown by default and you have to manually unselect file types you don't need to review every time. Diff Reviewer lets you configure default file extensions so only relevant files show up. You can also use the file extension filter pane to override that for a specific PR.
+**Configurable file pre-filtering**: On GitHub, all files are shown by default and you have to manually unselect file types you don't need to review every time. PR Reviewer lets you configure default file extensions so only relevant files show up. You can also use the file extension filter pane to override that for a specific PR.
 
 ## Features
-
 ### AI-Native Features
 - **Voice commands** — press Ctrl+B to speak review commands naturally. Add comments, approve, request changes, ask questions — all via voice. Powered by Hermes STT and LLM interpretation.
 - **Before/after design comparison** — PR descriptions with before/after screenshot pairs get a comparison icon. Click to open a full-screen slideshow with side-by-side images, navigation arrows, and click-to-zoom.
@@ -100,7 +98,7 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 
 ### Multi-Window Support
 - **New windows** (Cmd+N) — open multiple PRs in separate windows simultaneously
-- **File association** — .diff and .patch files open with Diff Reviewer
+- **File association** — .diff and .patch files open with PR Reviewer
 
 ### Platform Integration
 - **macOS**: .app bundle, dock icon, file associations for .diff/.patch
@@ -122,7 +120,6 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 ## Installation
 
 ### Pre-built Applications
-
 Pre-built applications are available for download from [GitHub Actions](https://github.com/webtoolbox/diff-reviewer/actions). Each build produces platform-specific installers:
 
 - **macOS**: `.dmg` installer
@@ -132,7 +129,6 @@ Pre-built applications are available for download from [GitHub Actions](https://
 Download the latest build for your platform, install, and you're ready to go.
 
 ### Build from Source
-
 #### Prerequisites
 - **Node.js** 18+ and npm
 - **git** and **gh** (GitHub CLI) — `gh` must be authenticated (`gh auth login`)
@@ -150,12 +146,11 @@ npm start
 #### Build .app Bundle
 ```bash
 npm run build
-# Creates Diff Reviewer.app in dist/mac-arm64/
+# Creates PR Reviewer.app in dist/mac-arm64/
 # Copy to /Applications/
 ```
 
 ### Linux
-
 ```bash
 git clone https://github.com/webtoolbox/diff-reviewer.git
 cd diff-reviewer
@@ -207,7 +202,6 @@ The app uses a two-tier config system:
 Private config overrides public config. Your private config should NOT be committed.
 
 ### Config Options
-
 ```json
 {
   "aiCommand": "hermes",
@@ -219,6 +213,9 @@ Private config overrides public config. Your private config should NOT be commit
     "reviewRequested": true,
     "titleContains": "for review"
   },
+  "repos": [
+    { "owner": "webtoolbox", "name": "Website-Toolbox", "checked": true }
+  ],
   "repoOwner": "",
   "repoName": "",
   "diff": {
@@ -254,7 +251,6 @@ Private config overrides public config. Your private config should NOT be commit
 ```
 
 ### Diff Modes
-
 The `diff.mode` config controls how diffs are generated when loading a PR:
 
 - **`since-review`** (default): Shows only changes since the last non-COMMENTED review by the repo owner. Handles dismissed reviews and commit_id mutation. Excludes merge commits. Falls back to full diff if no prior review exists.
@@ -272,8 +268,8 @@ When `since-review` mode is active:
 ## Usage
 
 ### Launching
-- **From dock**: Click the Diff Reviewer icon
-- **From Applications**: Double-click Diff Reviewer.app
+- **From dock**: Click the PR Reviewer icon
+- **From Applications**: Double-click PR Reviewer.app
 - **From terminal**: `npx electron . /path/to/file.diff`
 - **With AI session**: `npx electron . --chat-id "telegram:user / topic 12345" /path/to/file.diff`
 - **With PR number**: `npx electron . --pr-number 6690 /path/to/file.diff`

@@ -1,5 +1,5 @@
 {
-  "name": "diff-reviewer",
+  "name": "pr-reviewer",
   "version": "1.1.0",
   "description": "A macOS desktop app for reviewing GitHub PR diffs with line-level commenting, file-level comments, and AI agent integration.",
   "main": "main.js",
@@ -8,7 +8,7 @@
     "test": "electron test.js",
     "build": "electron-builder --mac",
     "build:dir": "electron-builder --mac --dir",
-    "postbuild": "cp -R 'dist/mac-arm64/Diff Reviewer.app' /Applications/ 2>/dev/null || true"
+    "postbuild": "cp -R 'dist/mac-arm64/PR Reviewer.app' /Applications/ 2>/dev/null || true"
   },
   "keywords": [
     "code-review",
@@ -37,8 +37,8 @@
   },
   "homepage": "https://github.com/webtoolbox/diff-reviewer#readme",
   "build": {
-    "appId": "com.webtoolbox.diff-reviewer",
-    "productName": "Diff Reviewer",
+    "appId": "com.webtoolbox.pr-reviewer",
+    "productName": "PR Reviewer",
     "mac": {
       "category": "public.app-category.developer-tools",
       "icon": "icon.png",

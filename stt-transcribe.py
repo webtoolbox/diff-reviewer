@@ -4,7 +4,7 @@
 Usage: python3 stt-transcribe.py <audio_file_path>
 
 Reads an audio file and outputs the transcription to stdout.
-Used by the Diff Reviewer's voice mode to transcribe recorded audio.
+Used by the PR Reviewer's voice mode to transcribe recorded audio.
 """
 import sys
 import os

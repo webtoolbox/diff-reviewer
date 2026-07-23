@@ -1,4 +1,4 @@
-# Diff Reviewer Test Cases
+# PR Reviewer Test Cases
 
 ## 1. App Launch & Empty State
 - [ ] App launches without errors

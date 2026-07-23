@@ -591,7 +591,7 @@ function createWindow(options = {}) {
   const win = new BrowserWindow({
     width: 1400,
     height: 900,
-    title: 'Diff Reviewer',
+    title: 'PR Reviewer',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -816,6 +816,123 @@ ipcMain.handle('list-prs', async () => {
         resolve({ prs: [], error: err.message });
       });
   });
+});
+
+// ===================== MULTI-REPO HANDLERS =====================
+
+function loadReposConfig() {
+  const publicConfigPath = path.join(__dirname, 'config.json');
+  const privateConfigPath = path.join(app.getPath('home'), '.config', 'diff-reviewer', 'config.json');
+
+  let publicRepos = [];
+  try {
+    const raw = fs.readFileSync(publicConfigPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    publicRepos = parsed.repos || [];
+  } catch {}
+
+  let privateRepos = [];
+  try {
+    const raw = fs.readFileSync(privateConfigPath, 'utf8');
+    const parsed = JSON.parse(raw);
+    privateRepos = parsed.repos || [];
+  } catch {}
+
+  // Merge: private overrides public by owner/name key
+  const repoMap = new Map();
+  for (const repo of publicRepos) {
+    const key = `${repo.owner}/${repo.name}`;
+    repoMap.set(key, { ...repo });
+  }
+  for (const repo of privateRepos) {
+    const key = `${repo.owner}/${repo.name}`;
+    repoMap.set(key, { ...repo });
+  }
+
+  return Array.from(repoMap.values());
+}
+
+ipcMain.handle('list-repos', async () => {
+  return { repos: loadReposConfig() };
+});
+
+ipcMain.handle('save-repos', async (event, repos) => {
+  try {
+    const privateDir = path.join(app.getPath('home'), '.config', 'diff-reviewer');
+    const privateConfigPath = path.join(privateDir, 'config.json');
+    fs.mkdirSync(privateDir, { recursive: true });
+
+    // Read existing private config
+    let existing = {};
+    try {
+      const raw = fs.readFileSync(privateConfigPath, 'utf8');
+      existing = JSON.parse(raw);
+    } catch {}
+
+    // Update repos
+    existing.repos = repos;
+    fs.writeFileSync(privateConfigPath, JSON.stringify(existing, null, 2));
+
+    // Update in-memory appConfig too
+    appConfig.repos = repos;
+
+    return { success: true };
+  } catch (err) {
+    console.error('[save-repos] failed:', err.message);
+    return { error: err.message };
+  }
+});
+
+ipcMain.handle('list-all-prs', async (event, { repos, filter }) => {
+  const filterConfig = filter || appConfig.prFilter || {};
+  const errors = [];
+  const allPrs = [];
+
+  for (const repo of repos) {
+    const { owner, name } = repo;
+    if (!owner || !name) continue;
+
+    try {
+      let page = 1;
+      let repoPrs = [];
+      while (true) {
+        const stdout = await execGh(
+          `api 'repos/${owner}/${name}/pulls?state=open&per_page=100&page=${page}' --jq '[.[] | {number, title, author: .user.login, created: .created_at, reviewers: [.requested_reviewers[].login], draft}]'`,
+          { timeout: 30000 }
+        );
+        let batch = [];
+        try { batch = JSON.parse(stdout); } catch { break; }
+        repoPrs = repoPrs.concat(batch);
+        if (batch.length < 100) break;
+        page++;
+      }
+
+      // Apply filters
+      if (filterConfig.reviewRequested) {
+        // For multi-repo, filter by reviewer login from the repo owner
+        repoPrs = repoPrs.filter(pr => pr.reviewers && pr.reviewers.includes(owner));
+      }
+      if (filterConfig.titleContains) {
+        const needle = filterConfig.titleContains.toLowerCase();
+        repoPrs = repoPrs.filter(pr => pr.title.toLowerCase().includes(needle));
+      }
+
+      // Add repo field to each PR
+      for (const pr of repoPrs) {
+        pr.repo = `${owner}/${name}`;
+      }
+
+      allPrs.push(...repoPrs);
+    } catch (err) {
+      console.error(`[list-all-prs] failed for ${owner}/${name}:`, err.message);
+      errors.push({ repo: `${owner}/${name}`, error: err.message });
+    }
+  }
+
+  // Sort all PRs by created date descending
+  allPrs.sort((a, b) => new Date(b.created) - new Date(a.created));
+
+  return { prs: allPrs, errors };
 });
 
 ipcMain.handle('save-review', async (event, review) => {
@@ -1331,6 +1448,7 @@ ipcMain.handle('get-config', async () => ({
   aiTagPrefix: appConfig.aiTagPrefix || '@Hermes',
   aiCommand: appConfig.aiCommand,
   prFilter: appConfig.prFilter || {},
+  repos: loadReposConfig(),
   repoOwner: appConfig.repoOwner || '',
   repoName: appConfig.repoName || '',
   repoPath: appConfig.repoPath || '',

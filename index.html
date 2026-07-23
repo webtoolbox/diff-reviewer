@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="referrer" content="no-referrer">
-  <title>Diff Reviewer</title>
+  <title>PR Reviewer</title>
   <link rel="stylesheet" type="text/css" href="node_modules/diff2html/bundles/css/diff2html.min.css">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -102,6 +102,12 @@
     }
     #btn-pr-list:hover { background: #30363d; }
 
+    /* Repos button */
+    #btn-repos {
+      background: #21262d; color: #c9d1d9; position: relative;
+    }
+    #btn-repos:hover { background: #30363d; }
+
     /* PR new window button */
     #btn-pr-new-window {
       background: #21262d; color: #c9d1d9; border: 1px solid #30363d;
@@ -168,6 +174,68 @@
     }
     #file-filter-dropdown .filter-actions .btn-apply:hover { background: #2ea043; }
 
+    /* Repo dropdown */
+    #repo-dropdown {
+      display: none; position: fixed; z-index: 1001;
+      background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+      max-height: 400px; min-width: 280px; overflow-y: auto;
+      padding: 8px 0;
+    }
+    #repo-dropdown.open { display: block; }
+    #repo-dropdown .repo-dropdown-header {
+      padding: 8px 12px; font-size: 12px; color: #8b949e; font-weight: 600;
+      border-bottom: 1px solid #21262d; margin-bottom: 4px;
+    }
+    #repo-dropdown .repo-item {
+      padding: 6px 12px; display: flex; align-items: center; gap: 8px;
+      cursor: pointer; transition: background 0.1s; font-size: 13px; color: #c9d1d9;
+    }
+    #repo-dropdown .repo-item:hover { background: #1c2128; }
+    #repo-dropdown .repo-item input[type="checkbox"] {
+      accent-color: #58a6ff; cursor: pointer;
+    }
+    #repo-dropdown .repo-item label {
+      cursor: pointer; flex: 1;
+    }
+    #repo-dropdown .repo-item .repo-name {
+      font-family: 'SFMono-Regular', Consolas, monospace; font-size: 12px;
+    }
+    #repo-dropdown .repo-add-section {
+      padding: 8px 12px; border-top: 1px solid #21262d; margin-top: 4px;
+    }
+    #repo-dropdown .repo-add-toggle {
+      background: none; border: none; color: #58a6ff; cursor: pointer;
+      font-size: 12px; padding: 0; display: flex; align-items: center; gap: 4px;
+    }
+    #repo-dropdown .repo-add-toggle:hover { text-decoration: underline; }
+    #repo-dropdown .repo-add-form {
+      display: none; margin-top: 8px;
+    }
+    #repo-dropdown .repo-add-form.open { display: block; }
+    #repo-dropdown .repo-add-form input {
+      width: 100%; background: #0d1117; border: 1px solid #30363d;
+      border-radius: 8px; color: #c9d1d9; padding: 6px 10px; font-size: 12px;
+      margin-bottom: 6px; outline: none;
+    }
+    #repo-dropdown .repo-add-form input:focus { border-color: #58a6ff; }
+    #repo-dropdown .repo-add-form input::placeholder { color: #484f58; }
+    #repo-dropdown .repo-add-form .repo-add-actions {
+      display: flex; gap: 6px; justify-content: flex-end;
+    }
+    #repo-dropdown .repo-add-form .repo-add-actions button {
+      padding: 4px 10px; border-radius: 9999px; border: 1px solid #30363d;
+      font-size: 11px; cursor: pointer; background: #21262d; color: #c9d1d9;
+    }
+    #repo-dropdown .repo-add-form .repo-add-actions button:hover { background: #30363d; }
+    #repo-dropdown .repo-add-form .repo-add-actions .btn-add-repo {
+      background: #238636; color: #fff; border-color: #238636;
+    }
+    #repo-dropdown .repo-add-form .repo-add-actions .btn-add-repo:hover { background: #2ea043; }
+    #repo-dropdown::-webkit-scrollbar { width: 6px; }
+    #repo-dropdown::-webkit-scrollbar-thumb { background: #30363d; border-radius: 3px; }
+    #repo-dropdown::-webkit-scrollbar-track { background: #161b22; }
+
     /* File name filter input */
     .file-name-filter-wrapper {
       padding: 8px 12px; border-bottom: 1px solid #21262d;
@@ -219,6 +287,11 @@
     #pr-dropdown .pr-item .pr-meta .pr-reviewers { color: #3fb950; }
     #pr-dropdown .pr-item .pr-meta .pr-draft {
       color: #f0883e; font-weight: 600; margin-left: 4px;
+    }
+    #pr-dropdown .pr-item .pr-meta .pr-repo-label {
+      color: #8b949e; font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 10px; background: #21262d; padding: 1px 5px;
+      border-radius: 8px; margin-left: 2px;
     }
     #pr-dropdown .pr-new-window-btn {
       background: none; border: 1px solid #30363d; border-radius: 8px;
@@ -964,6 +1037,7 @@
       <label for="pr-number" style="font-size:12px;color:#8b949e;margin-right:4px">PR #</label>
       <input type="text" id="pr-number" placeholder="#" title="Enter PR number and press Enter to load">
       <button id="btn-pr-list" title="List PRs pending review">▾</button>
+      <button id="btn-repos" title="Select repositories">📁</button>
       <button id="btn-pr-new-window" title="Open PR in new window" style="display:none">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3"/>
@@ -1003,6 +1077,22 @@
   <div id="pr-dropdown">
     <div class="pr-dropdown-header">Pull Requests Pending Review</div>
     <div class="pr-loading">Loading...</div>
+  </div>
+
+  <div id="repo-dropdown">
+    <div class="repo-dropdown-header">Repositories</div>
+    <div id="repo-list"></div>
+    <div class="repo-add-section">
+      <button class="repo-add-toggle" id="repo-add-toggle">+ Add Repository</button>
+      <div class="repo-add-form" id="repo-add-form">
+        <input type="text" id="repo-add-owner" placeholder="owner (e.g. webtoolbox)">
+        <input type="text" id="repo-add-name" placeholder="name (e.g. Website-Toolbox)">
+        <div class="repo-add-actions">
+          <button id="repo-add-cancel">Cancel</button>
+          <button class="btn-add-repo" id="repo-add-confirm">Add</button>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div id="file-filter-dropdown">

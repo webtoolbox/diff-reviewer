@@ -1372,7 +1372,7 @@ async function loadPrByNumber(prNumber) {
     beforeAfterPairs = detectBeforeAfterPairs(currentPrBody);
 
     // Update title bar
-    document.title = currentPrTitle ? `${currentPrTitle} — Diff Reviewer` : `Diff Reviewer — PR #${prNumber}`;
+    document.title = currentPrTitle ? `${currentPrTitle} — PR Reviewer` : `PR Reviewer — PR #${prNumber}`;
     // Store PR number
     prNumberInput.value = prNumber;
 
@@ -1389,6 +1389,7 @@ async function loadPrByNumber(prNumber) {
 // PR dropdown toggle
 btnPrList.addEventListener('click', async (e) => {
   e.stopPropagation();
+  closeRepoDropdown(); // Close repo dropdown when opening PR dropdown
   if (prDropdownOpen) {
     closePrDropdown();
   } else {
@@ -1421,7 +1422,11 @@ async function openPrDropdown() {
     refreshPrList();
   } else {
     prDropdown.innerHTML = '<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-loading">Loading...</div>';
-    const { prs, error } = await window.electronAPI.listPrs();
+    // Get checked repos
+    const reposToFetch = checkedRepos.length > 0
+      ? checkedRepos.map(r => ({ owner: r.owner, name: r.name }))
+      : [{ owner: appConfig.repoOwner || '', name: appConfig.repoName || '' }];
+    const { prs, error } = await window.electronAPI.listAllPrs({ repos: reposToFetch });
     if (error) {
       prDropdown.innerHTML = `<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-empty">Error: ${escapeHtml(error)}</div>`;
       return;
@@ -1435,7 +1440,10 @@ async function openPrDropdown() {
 // Refresh PR list in background (update cache and re-render if dropdown is open)
 async function refreshPrList() {
   try {
-    const { prs, error } = await window.electronAPI.listPrs();
+    const reposToFetch = checkedRepos.length > 0
+      ? checkedRepos.map(r => ({ owner: r.owner, name: r.name }))
+      : [{ owner: appConfig.repoOwner || '', name: appConfig.repoName || '' }];
+    const { prs, error } = await window.electronAPI.listAllPrs({ repos: reposToFetch });
     if (error || !prs) return;
     cachedPrList = prs;
     cachedPrListTime = Date.now();
@@ -1450,17 +1458,19 @@ function renderPrList(prs) {
     return;
   }
 
+  const hasMultipleRepos = checkedRepos.length > 1;
   let html = `<div class="pr-dropdown-header">Pull Requests Pending Review (${prs.length})</div>`;
   for (const pr of prs) {
     const date = new Date(pr.created).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     const draft = pr.draft ? '<span class="pr-draft">DRAFT</span>' : '';
+    const repoLabel = hasMultipleRepos && pr.repo ? `<span class="pr-repo-label"> ${escapeHtml(pr.repo)}</span>` : '';
     html += `
-      <div class="pr-item" data-pr="${pr.number}">
+      <div class="pr-item" data-pr="${pr.number}" data-repo="${pr.repo || ''}">
         <div class="pr-item-content">
           <div class="pr-title">${escapeHtml(pr.title)}${draft}</div>
           <div class="pr-meta">
             <span class="pr-number">#${pr.number}</span>
-            <span class="pr-author"> by ${escapeHtml(pr.author)}</span>
+            <span class="pr-author"> by ${escapeHtml(pr.author)}</span>${repoLabel}
             <span> · ${date}</span>
           </div>
         </div>
@@ -1728,6 +1738,159 @@ let cachedPrListTime = 0;
 const PR_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours
 let currentPrNumber = null;
 let currentPrBody = '';
+
+// ===================== MULTI-REPO STATE =====================
+
+let allRepos = []; // All repos from config
+let checkedRepos = []; // Currently checked repos
+let repoDropdownOpen = false;
+
+const btnRepos = document.getElementById('btn-repos');
+const repoDropdown = document.getElementById('repo-dropdown');
+const repoListEl = document.getElementById('repo-list');
+const repoAddToggle = document.getElementById('repo-add-toggle');
+const repoAddForm = document.getElementById('repo-add-form');
+const repoAddOwner = document.getElementById('repo-add-owner');
+const repoAddName = document.getElementById('repo-add-name');
+const repoAddCancel = document.getElementById('repo-add-cancel');
+const repoAddConfirm = document.getElementById('repo-add-confirm');
+
+async function loadRepos() {
+  try {
+    const { repos } = await window.electronAPI.listRepos();
+    allRepos = repos || [];
+    checkedRepos = allRepos.filter(r => r.checked);
+  } catch {
+    allRepos = [];
+    checkedRepos = [];
+  }
+}
+
+function renderRepoDropdown() {
+  let html = '';
+  for (const repo of allRepos) {
+    const key = `${repo.owner}/${repo.name}`;
+    const checked = repo.checked ? 'checked' : '';
+    html += `
+      <div class="repo-item" data-repo-key="${key}">
+        <input type="checkbox" id="repo-cb-${key}" ${checked} data-owner="${repo.owner}" data-name="${repo.name}">
+        <label for="repo-cb-${key}" class="repo-name">${repo.owner}/${repo.name}</label>
+      </div>`;
+  }
+  repoListEl.innerHTML = html;
+
+  // Wire up checkbox handlers (auto-apply)
+  repoListEl.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+    cb.addEventListener('change', async () => {
+      const owner = cb.dataset.owner;
+      const name = cb.dataset.name;
+      const repo = allRepos.find(r => r.owner === owner && r.name === name);
+      if (repo) {
+        repo.checked = cb.checked;
+      }
+      checkedRepos = allRepos.filter(r => r.checked);
+      await window.electronAPI.saveRepos(allRepos);
+      // Invalidate PR cache and re-fetch
+      cachedPrList = null;
+      cachedPrListTime = 0;
+      if (prDropdownOpen) {
+        await openPrDropdown();
+      }
+    });
+  });
+}
+
+function toggleRepoDropdown() {
+  if (repoDropdownOpen) {
+    closeRepoDropdown();
+  } else {
+    closePrDropdown(); // Close PR dropdown when opening repo dropdown
+    openRepoDropdown();
+  }
+}
+
+function openRepoDropdown() {
+  const btnRect = btnRepos.getBoundingClientRect();
+  repoDropdown.style.top = (btnRect.bottom + 4) + 'px';
+  repoDropdown.style.right = (window.innerWidth - btnRect.right) + 'px';
+  repoDropdown.style.left = 'auto';
+  repoDropdown.classList.add('open');
+  repoDropdownOpen = true;
+  renderRepoDropdown();
+}
+
+function closeRepoDropdown() {
+  repoDropdown.classList.remove('open');
+  repoDropdownOpen = false;
+}
+
+// Repo add form toggle
+repoAddToggle.addEventListener('click', () => {
+  repoAddForm.classList.toggle('open');
+  if (repoAddForm.classList.contains('open')) {
+    repoAddOwner.value = '';
+    repoAddName.value = '';
+    repoAddOwner.focus();
+  }
+});
+
+repoAddCancel.addEventListener('click', () => {
+  repoAddForm.classList.remove('open');
+});
+
+repoAddConfirm.addEventListener('click', async () => {
+  const owner = repoAddOwner.value.trim();
+  const name = repoAddName.value.trim();
+  if (!owner || !name) return;
+
+  // Check if already exists
+  const exists = allRepos.some(r => r.owner === owner && r.name === name);
+  if (exists) {
+    // Just check it
+    const repo = allRepos.find(r => r.owner === owner && r.name === name);
+    if (repo) repo.checked = true;
+  } else {
+    allRepos.push({ owner, name, checked: true });
+  }
+
+  checkedRepos = allRepos.filter(r => r.checked);
+  await window.electronAPI.saveRepos(allRepos);
+  renderRepoDropdown();
+  repoAddForm.classList.remove('open');
+  // Invalidate PR cache
+  cachedPrList = null;
+  cachedPrListTime = 0;
+  if (prDropdownOpen) {
+    await openPrDropdown();
+  }
+});
+
+// Enter key in add repo inputs
+repoAddName.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    repoAddConfirm.click();
+  }
+});
+repoAddOwner.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    repoAddName.focus();
+  }
+});
+
+btnRepos.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleRepoDropdown();
+});
+
+// Close repo dropdown when clicking outside
+document.addEventListener('click', (e) => {
+  if (repoDropdownOpen && !repoDropdown.contains(e.target) && e.target !== btnRepos) {
+    closeRepoDropdown();
+  }
+});
+
+// Initialize repos on load
+loadRepos();
 
 // Override loadDiff to store content and apply filter
 const originalLoadDiff = typeof loadDiff !== 'undefined' ? loadDiff : null;

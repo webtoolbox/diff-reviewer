@@ -1,4 +1,4 @@
-# Contributing to Diff Reviewer
+# Contributing to PR Reviewer
 
 Thanks for your interest in contributing! This project is open source and welcomes pull requests.
 

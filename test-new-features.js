@@ -160,7 +160,7 @@ async function runTests() {
 
         // TEST 22: Title bar set
         const title = await win.webContents.executeJavaScript(`document.title`);
-        record('Title bar includes app name', title.includes('Diff Reviewer'), `title: "${title}"`);
+        record('Title bar includes app name', title.includes('PR Reviewer'), `title: "${title}"`);
 
         // TEST 23: Export button exists
         const exportBtn = await win.webContents.executeJavaScript(`!!document.getElementById('btn-export')`);
