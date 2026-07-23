@@ -1594,9 +1594,42 @@ ipcMain.handle('auto-detect-agent', async () => {
 
 let autoUpdateInterval = null;
 let lastUpdateCheck = 0;
+let pendingUpdate = false;
+let appFocused = true;
 
-// Check for updates, pull, build, and reinstall
-async function checkAndUpdate() {
+// Track app focus state
+app.on('browser-window-focus', () => { appFocused = true; });
+app.on('browser-window-blur', () => {
+  // Only set unfocused if no windows are focused
+  setTimeout(() => {
+    const allWindows = BrowserWindow.getAllWindows();
+    appFocused = allWindows.some(w => w.isFocused());
+  }, 500);
+});
+
+// Apply pending update when app loses focus
+function applyPendingUpdate() {
+  if (!pendingUpdate || appFocused) return;
+  pendingUpdate = false;
+  console.log('[auto-update] App is idle, applying update...');
+  const repoDir = app.getAppPath();
+  exec('git pull origin main', { cwd: repoDir, timeout: 30000 }, (pullErr) => {
+    if (pullErr) { console.error('[auto-update] pull failed:', pullErr.message); return; }
+    exec('npm install', { cwd: repoDir, timeout: 120000 }, (installErr) => {
+      if (installErr) { console.error('[auto-update] npm install failed:', installErr.message); return; }
+      exec('npm run build', { cwd: repoDir, timeout: 300000 }, (buildErr) => {
+        if (buildErr) { console.error('[auto-update] build failed:', buildErr.message); return; }
+        console.log('[auto-update] Update complete! Restarting...');
+        updateLastCheckTime();
+        app.relaunch();
+        app.exit(0);
+      });
+    });
+  });
+}
+
+// Check for updates (fetch + compare, but don't install yet)
+async function checkForUpdates() {
   try {
     const repoDir = app.getAppPath();
     const privateConfigPath = path.join(app.getPath('home'), '.config', 'pr-reviewer', 'config.json');
@@ -1625,56 +1658,23 @@ async function checkAndUpdate() {
 
     console.log('[auto-update] Checking for updates...');
 
-    // Fetch latest from remote
     exec('git fetch origin main', { cwd: repoDir, timeout: 30000 }, (fetchErr) => {
-      if (fetchErr) {
-        console.error('[auto-update] fetch failed:', fetchErr.message);
-        return;
-      }
+      if (fetchErr) { console.error('[auto-update] fetch failed:', fetchErr.message); return; }
 
-      // Check if there are new commits
       exec('git rev-parse HEAD', { cwd: repoDir, encoding: 'utf8' }, (localErr, localSha) => {
         if (localErr) return;
-
         exec('git rev-parse origin/main', { cwd: repoDir, encoding: 'utf8' }, (remoteErr, remoteSha) => {
           if (remoteErr) return;
+          updateLastCheckTime();
 
           if (localSha.trim() === remoteSha.trim()) {
             console.log('[auto-update] Already up to date');
-            updateLastCheckTime();
             return;
           }
 
-          console.log('[auto-update] Update available, pulling...');
-          exec('git pull origin main', { cwd: repoDir, timeout: 30000 }, (pullErr) => {
-            if (pullErr) {
-              console.error('[auto-update] pull failed:', pullErr.message);
-              return;
-            }
-
-            console.log('[auto-update] Installing dependencies...');
-            exec('npm install', { cwd: repoDir, timeout: 120000 }, (installErr) => {
-              if (installErr) {
-                console.error('[auto-update] npm install failed:', installErr.message);
-                return;
-              }
-
-              console.log('[auto-update] Building...');
-              exec('npm run build', { cwd: repoDir, timeout: 300000 }, (buildErr) => {
-                if (buildErr) {
-                  console.error('[auto-update] build failed:', buildErr.message);
-                  return;
-                }
-
-                console.log('[auto-update] Update complete! Restarting...');
-                updateLastCheckTime();
-
-                // Restart the app
-                app.relaunch();
-                app.exit(0);
-              });
-            });
-          });
+          console.log('[auto-update] Update available, waiting for idle...');
+          pendingUpdate = true;
+          applyPendingUpdate();
         });
       });
     });
@@ -1703,10 +1703,17 @@ function updateLastCheckTime() {
 function startAutoUpdate() {
   if (autoUpdateInterval) clearInterval(autoUpdateInterval);
   // Check immediately on startup
-  checkAndUpdate();
+  checkForUpdates();
   // Then every 6 hours
-  autoUpdateInterval = setInterval(checkAndUpdate, 6 * 60 * 60 * 1000);
+  autoUpdateInterval = setInterval(checkForUpdates, 6 * 60 * 60 * 1000);
 }
+
+// Apply pending updates when app loses focus
+app.on('browser-window-blur', () => {
+  setTimeout(() => {
+    if (!appFocused) applyPendingUpdate();
+  }, 1000);
+});
 
 // IPC: manual update check
 ipcMain.handle('check-update', async () => {
