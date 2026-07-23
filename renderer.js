@@ -1836,12 +1836,8 @@ let repoDropdownOpen = false;
 const btnRepos = document.getElementById('btn-repos');
 const repoDropdown = document.getElementById('repo-dropdown');
 const repoListEl = document.getElementById('repo-list');
-const repoAddToggle = document.getElementById('repo-add-toggle');
-const repoAddForm = document.getElementById('repo-add-form');
-const repoAddOwner = document.getElementById('repo-add-owner');
-const repoAddName = document.getElementById('repo-add-name');
-const repoAddCancel = document.getElementById('repo-add-cancel');
-const repoAddConfirm = document.getElementById('repo-add-confirm');
+const repoAddToggle = null;
+const repoAddForm = null;
 
 async function loadRepos() {
   try {
@@ -1854,9 +1850,18 @@ async function loadRepos() {
   }
 }
 
-function renderRepoDropdown() {
+function renderRepoDropdown(filterText) {
+  const searchValue = (filterText || '').toLowerCase().trim();
+  let filtered = allRepos;
+  if (searchValue) {
+    filtered = allRepos.filter(r => {
+      const key = `${r.owner}/${r.name}`.toLowerCase();
+      return key.includes(searchValue);
+    });
+  }
+
   let html = '';
-  for (const repo of allRepos) {
+  for (const repo of filtered) {
     const key = `${repo.owner}/${repo.name}`;
     const checked = repo.checked ? 'checked' : '';
     html += `
@@ -1864,6 +1869,9 @@ function renderRepoDropdown() {
         <input type="checkbox" id="repo-cb-${key}" ${checked} data-owner="${repo.owner}" data-name="${repo.name}">
         <label for="repo-cb-${key}" class="repo-name">${repo.owner}/${repo.name}</label>
       </div>`;
+  }
+  if (filtered.length === 0 && searchValue) {
+    html = `<div class="pr-empty" style="padding:12px">No repos match "${escapeHtml(searchValue)}"</div>`;
   }
   repoListEl.innerHTML = html;
 
@@ -1886,6 +1894,23 @@ function renderRepoDropdown() {
       }
     });
   });
+
+  // Wire up search input
+  const searchInput = document.getElementById('repo-search');
+  if (searchInput) {
+    searchInput.focus();
+    let searchDebounce = null;
+    searchInput.addEventListener('input', () => {
+      clearTimeout(searchDebounce);
+      searchDebounce = setTimeout(() => {
+        renderRepoDropdown(searchInput.value);
+      }, 200);
+    });
+    searchInput.addEventListener('click', (e) => e.stopPropagation());
+    if (searchValue) {
+      searchInput.setSelectionRange(searchValue.length, searchValue.length);
+    }
+  }
 }
 
 function toggleRepoDropdown() {
@@ -1912,59 +1937,15 @@ function closeRepoDropdown() {
   repoDropdownOpen = false;
 }
 
-// Repo add form toggle
-repoAddToggle.addEventListener('click', () => {
-  repoAddForm.classList.toggle('open');
-  if (repoAddForm.classList.contains('open')) {
-    repoAddOwner.value = '';
-    repoAddName.value = '';
-    repoAddOwner.focus();
+// Refresh PRs when app regains focus after 30+ minutes
+window.addEventListener('focus', () => {
+  const THIRTY_MIN = 30 * 60 * 1000;
+  if (cachedPrListTime && (Date.now() - cachedPrListTime) > THIRTY_MIN) {
+    refreshPrList();
   }
 });
 
-repoAddCancel.addEventListener('click', () => {
-  repoAddForm.classList.remove('open');
-});
-
-repoAddConfirm.addEventListener('click', async () => {
-  const owner = repoAddOwner.value.trim();
-  const name = repoAddName.value.trim();
-  if (!owner || !name) return;
-
-  // Check if already exists
-  const exists = allRepos.some(r => r.owner === owner && r.name === name);
-  if (exists) {
-    // Just check it
-    const repo = allRepos.find(r => r.owner === owner && r.name === name);
-    if (repo) repo.checked = true;
-  } else {
-    allRepos.push({ owner, name, checked: true });
-  }
-
-  checkedRepos = allRepos.filter(r => r.checked);
-  await window.electronAPI.saveRepos(allRepos);
-  renderRepoDropdown();
-  repoAddForm.classList.remove('open');
-  // Invalidate PR cache
-  cachedPrList = null;
-  cachedPrListTime = 0;
-  if (prDropdownOpen) {
-    await openPrDropdown();
-  }
-});
-
-// Enter key in add repo inputs
-repoAddName.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    repoAddConfirm.click();
-  }
-});
-repoAddOwner.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') {
-    repoAddName.focus();
-  }
-});
-
+// Close dropdown when clicking outside
 btnRepos.addEventListener('click', (e) => {
   e.stopPropagation();
   toggleRepoDropdown();
@@ -2894,9 +2875,6 @@ if (prefsSidebar) {
 
 // Preference field IDs and their config paths
 const prefFields = [
-  { id: 'pref-repo-owner', key: 'repoOwner', type: 'text' },
-  { id: 'pref-repo-name', key: 'repoName', type: 'text' },
-  { id: 'pref-repo-path', key: 'repoPath', type: 'text' },
   { id: 'pref-ai-command', key: 'aiCommand', type: 'text' },
   { id: 'pref-ai-tag', key: 'aiTagPrefix', type: 'text' },
   { id: 'pref-editor-cmd', key: 'editorCommand', type: 'text' },

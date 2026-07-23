@@ -339,16 +339,14 @@ async function runTests() {
 
   // TEST: Preferences dialog has all required fields
   const prefFieldIds = await mainWindow.webContents.executeJavaScript(`
-    ['pref-repo-owner','pref-repo-name','pref-repo-path','pref-ai-command',
-     'pref-ai-tag','pref-editor-cmd','pref-context-lines','pref-diff-mode',
-     'pref-img-enabled','pref-s3-bucket','pref-s3-prefix','pref-aws-profile',
-     'pref-aws-region','pref-title-contains','pref-review-requested',
-     'pref-autofix-enabled','pref-rules-enabled']
+    ['pref-ai-command', 'pref-ai-tag', 'pref-editor-cmd', 'pref-context-lines',
+     'pref-diff-mode', 'pref-img-enabled', 'pref-s3-bucket', 'pref-s3-prefix',
+     'pref-aws-profile', 'pref-aws-region', 'pref-title-contains',
+     'pref-review-requested', 'pref-autofix-enabled', 'pref-rules-enabled']
     .map(id => ({ id, exists: !!document.getElementById(id) }))
   `);
-  const allPrefFieldsExist = prefFieldIds.every(f => f.exists);
-  assert('All preference fields exist', allPrefFieldsExist,
-    `missing: ${prefFieldIds.filter(f => !f.exists).map(f => f.id).join(', ') || 'none'}`);
+  const missingPrefs = prefFieldIds.filter(f => !f.exists).map(f => f.id);
+  assert('All preference fields exist', missingPrefs.length === 0, `missing: ${missingPrefs.join(', ')}`);
 
   // TEST: Open preferences dialog
   await mainWindow.webContents.executeJavaScript(`openPreferences()`);
@@ -359,30 +357,20 @@ async function runTests() {
   assert('Preferences dialog opens', prefsVisible === 'flex', `display="${prefsVisible}"`);
 
   // TEST: Preferences fields are populated with config values
-  const repoOwnerValue = await mainWindow.webContents.executeJavaScript(
-    `document.getElementById('pref-repo-owner').value`
-  );
   const contextLinesValue = await mainWindow.webContents.executeJavaScript(
     `document.getElementById('pref-context-lines').value`
   );
   const editorCmdValue = await mainWindow.webContents.executeJavaScript(
     `document.getElementById('pref-editor-cmd').value`
   );
-  assert('Repo owner field populated', repoOwnerValue === '', `value="${repoOwnerValue}"`);
   assert('Context lines field populated (default 5)', contextLinesValue === '5', `value="${contextLinesValue}"`);
   assert('Editor command field populated (default code)', editorCmdValue === 'code', `value="${editorCmdValue}"`);
 
   // TEST: Preferences fields are editable
   await mainWindow.webContents.executeJavaScript(`
-    document.getElementById('pref-repo-owner').value = 'test-owner';
-    document.getElementById('pref-repo-name').value = 'test-repo';
     document.getElementById('pref-context-lines').value = '10';
     document.getElementById('pref-autofix-enabled').checked = true;
   `);
-  const editedOwner = await mainWindow.webContents.executeJavaScript(
-    `document.getElementById('pref-repo-owner').value`
-  );
-  assert('Repo owner field is editable', editedOwner === 'test-owner', `value="${editedOwner}"`);
 
   // TEST: Save preferences sends correct data
   await mainWindow.webContents.executeJavaScript(`savePreferences()`);
@@ -391,8 +379,6 @@ async function runTests() {
   assert('Preferences file created', fs.existsSync(prefsSavedPath));
   if (fs.existsSync(prefsSavedPath)) {
     const savedPrefs = JSON.parse(fs.readFileSync(prefsSavedPath, 'utf8'));
-    assert('Saved repo owner correct', savedPrefs.repoOwner === 'test-owner', `value="${savedPrefs.repoOwner}"`);
-    assert('Saved repo name correct', savedPrefs.repoName === 'test-repo', `value="${savedPrefs.repoName}"`);
     assert('Saved context lines correct', savedPrefs.contextLines === 10, `value="${savedPrefs.contextLines}"`);
     assert('Saved auto-fix enabled', savedPrefs.autoFix && savedPrefs.autoFix.enabled === true, `value="${savedPrefs.autoFix?.enabled}"`);
   }

@@ -831,35 +831,46 @@ ipcMain.handle('list-prs', async () => {
 // ===================== MULTI-REPO HANDLERS =====================
 
 function loadReposConfig() {
-  const publicConfigPath = path.join(__dirname, 'config.json');
+  // Load checked state from private config
   const privateConfigPath = path.join(app.getPath('home'), '.config', 'pr-reviewer', 'config.json');
-
-  let publicRepos = [];
-  try {
-    const raw = fs.readFileSync(publicConfigPath, 'utf8');
-    const parsed = JSON.parse(raw);
-    publicRepos = parsed.repos || [];
-  } catch {}
-
-  let privateRepos = [];
+  let checkedState = {};
   try {
     const raw = fs.readFileSync(privateConfigPath, 'utf8');
     const parsed = JSON.parse(raw);
-    privateRepos = parsed.repos || [];
+    for (const r of (parsed.repos || [])) {
+      checkedState[`${r.owner}/${r.name}`] = r.checked;
+    }
   } catch {}
 
-  // Merge: private overrides public by owner/name key
-  const repoMap = new Map();
-  for (const repo of publicRepos) {
-    const key = `${repo.owner}/${repo.name}`;
-    repoMap.set(key, { ...repo });
-  }
-  for (const repo of privateRepos) {
-    const key = `${repo.owner}/${repo.name}`;
-    repoMap.set(key, { ...repo });
+  // Load default owner from config
+  const defaultOwner = appConfig.repoOwner || 'webtoolbox';
+
+  // Fetch all repos from gh for the default owner
+  let ghRepos = [];
+  try {
+    const stdout = require('child_process').execSync(
+      `gh repo list ${defaultOwner} --limit 100 --json name,isPrivate --jq '[.[] | {owner: "${defaultOwner}", name: .name}]'`,
+      { encoding: 'utf8', timeout: 15000 }
+    );
+    ghRepos = JSON.parse(stdout || '[]');
+  } catch (err) {
+    console.error('[repos] gh repo list failed:', err.message);
   }
 
-  return Array.from(repoMap.values());
+  // Merge: apply checked state from config
+  const repos = ghRepos.map(r => ({
+    ...r,
+    checked: checkedState[`${r.owner}/${r.name}`] === true
+  }));
+
+  // Sort: checked first, then alphabetical by owner/name
+  repos.sort((a, b) => {
+    if (a.checked && !b.checked) return -1;
+    if (!a.checked && b.checked) return 1;
+    return `${a.owner}/${a.name}`.localeCompare(`${b.owner}/${b.name}`);
+  });
+
+  return repos;
 }
 
 ipcMain.handle('list-repos', async () => {
