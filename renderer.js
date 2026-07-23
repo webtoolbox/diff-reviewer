@@ -986,6 +986,10 @@ window.electronAPI.getConfig().then(async (config) => {
       if (prs && prs.length > 0) {
         cachedPrList = prs;
         cachedPrListTime = Date.now();
+        // Auto-load first PR if none is loaded
+        if (!currentPrNumber && prs.length > 0) {
+          await loadPrByNumber(prs[0].number, prs[0].repo);
+        }
       }
     }
   } catch {}
@@ -1477,14 +1481,15 @@ async function refreshPrList() {
       ? checkedRepos.map(r => ({ owner: r.owner, name: r.name }))
       : [{ owner: appConfig.repoOwner || '', name: appConfig.repoName || '' }];
     const { prs, error } = await window.electronAPI.listAllPrs({ repos: reposToFetch });
-    if (error || !prs) return;
+    if (error || !prs) return null;
     cachedPrList = prs;
     cachedPrListTime = Date.now();
     if (prDropdownOpen) {
       const searchInput = document.getElementById('pr-search');
       renderPrList(prs, searchInput ? searchInput.value : '');
     }
-  } catch {}
+    return prs;
+  } catch { return null; }
 }
 
 // Render PR list into the dropdown
@@ -1938,10 +1943,14 @@ function closeRepoDropdown() {
 }
 
 // Refresh PRs when app regains focus after 30+ minutes
-window.addEventListener('focus', () => {
+window.addEventListener('focus', async () => {
   const THIRTY_MIN = 30 * 60 * 1000;
   if (cachedPrListTime && (Date.now() - cachedPrListTime) > THIRTY_MIN) {
-    refreshPrList();
+    const prs = await refreshPrList();
+    // Auto-load first PR if none is loaded and PRs are available
+    if (!currentPrNumber && prs && prs.length > 0) {
+      await loadPrByNumber(prs[0].number, prs[0].repo);
+    }
   }
 });
 
