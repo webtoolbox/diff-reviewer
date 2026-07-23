@@ -1051,7 +1051,7 @@
 </head>
 <body>
   <div id="review-bar">
-    <div class="pr-info" id="pr-info">No diff loaded</div>
+    <div class="pr-info" id="pr-info"></div>
     <div id="pr-number-wrapper">
       <label for="pr-number" style="font-size:12px;color:#8b949e;margin-right:4px">PR #</label>
       <input type="text" id="pr-number" placeholder="#" title="Enter PR number and press Enter to load">
@@ -1140,9 +1140,16 @@
   </div>
 
   <div id="content">
-    <div id="empty-state" style="display:none">
-      <div>Open a .diff file to begin reviewing</div>
-      <div class="hint">Click "Open Diff", enter a PR number, or drag and drop a file</div>
+    <div id="empty-state">
+      <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="#30363d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="margin-bottom:16px">
+        <path d="M15 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V7z"/>
+        <path d="M14 2v4a2 2 0 002 2h4"/>
+        <path d="M10 13H8"/>
+        <path d="M16 17H8"/>
+        <path d="M16 13h-2"/>
+      </svg>
+      <div style="color:#484f58;font-size:16px;font-weight:500">Select a pull request to review</div>
+      <div class="hint">Click the ▾ button or enter a PR number above</div>
     </div>
     <div id="diff-container"></div>
     <div id="review-body-container">

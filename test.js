@@ -1421,7 +1421,7 @@ ipcMain.handle('list-all-prs', async (event, { repos, filter }) => ({
   ]
 }));
 ipcMain.handle('save-image', async () => null);
-ipcMain.handle('get-collaborators', async () => [
+ipcMain.handle('get-collaborators', async (event, repoKey) => [
   {login: 'webtoolbox', avatar_url: 'https://avatars.githubusercontent.com/u/1?v=4'},
   {login: 'masihur', avatar_url: 'https://avatars.githubusercontent.com/u/2?v=4'},
   {login: 'laeeqwtb', avatar_url: 'https://avatars.githubusercontent.com/u/3?v=4'},
@@ -1446,7 +1446,7 @@ ipcMain.handle('process-voice-command', async (event, { audioBase64, context }) 
   return { success: true, actions };
 });
 
-ipcMain.handle('load-pr', async (event, prNumber) => {
+ipcMain.handle('load-pr', async (event, { prNumber, repo } = {}) => {
   // Mock: return a PR with before/after image pairs in the body
   const testDiff = fs.readFileSync(testDiffPath, 'utf8');
   return {

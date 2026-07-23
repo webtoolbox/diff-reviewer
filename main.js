@@ -358,10 +358,15 @@ async function findLastCommitBefore(owner, repo, prNumber, targetDate) {
 }
 
 // Generate diff for a PR — supports full diff or since-last-review
-async function generateDiff(prNumber) {
+async function generateDiff(prNumber, repoKey) {
   const repoPath = path.join(app.getPath('home'), 'Website-Toolbox');
-  const owner = appConfig.repoOwner || 'webtoolbox';
-  const repo = appConfig.repoName || 'Website-Toolbox';
+  let owner, repo;
+  if (repoKey && repoKey.includes('/')) {
+    [owner, repo] = repoKey.split('/');
+  } else {
+    owner = appConfig.repoOwner || 'webtoolbox';
+    repo = appConfig.repoName || 'Website-Toolbox';
+  }
   const diffMode = (appConfig.diff || {}).mode || 'since-review';
 
   // Get HEAD SHA
@@ -730,19 +735,24 @@ ipcMain.handle('open-pr-new-window', async (event, prNumber) => {
   }
 });
 
-ipcMain.handle('load-pr', async (event, prNumber) => {
+ipcMain.handle('load-pr', async (event, { prNumber, repo } = {}) => {
   try {
-    const result = await generateDiff(prNumber);
+    const result = await generateDiff(prNumber, repo);
     const content = fs.readFileSync(result.diffPath, 'utf8');
     const fileName = `pr-${prNumber}-clean.diff`;
 
     // Fetch PR title, author, and assignees
-    const owner = appConfig.repoOwner || 'webtoolbox';
-    const repo = appConfig.repoName || 'Website-Toolbox';
+    let owner, repoName;
+    if (repo && repo.includes('/')) {
+      [owner, repoName] = repo.split('/');
+    } else {
+      owner = appConfig.repoOwner || 'webtoolbox';
+      repoName = appConfig.repoName || 'Website-Toolbox';
+    }
     let prTitle = '', prAuthor = '', prAssignees = [], prBody = '';
     try {
       const prJson = await execPromise(
-        `gh pr view ${prNumber} --repo ${owner}/${repo} --json title,author,assignees,body`
+        `gh pr view ${prNumber} --repo ${owner}/${repoName} --json title,author,assignees,body`
       );
       const prData = JSON.parse(prJson);
       prTitle = prData.title || '';
@@ -1416,14 +1426,20 @@ ipcMain.handle('get-file-blame', async (event, { prNumber, filePath }) => {
   }
 });
 
-// Collaborators cache (session-level)
-let collaboratorsCache = null;
+// Collaborators cache (session-level, per-repo)
+let collaboratorsCache = {};
 
-ipcMain.handle('get-collaborators', async () => {
-  if (collaboratorsCache) return collaboratorsCache;
+ipcMain.handle('get-collaborators', async (event, repoKey) => {
+  const cacheKey = repoKey || 'default';
+  if (collaboratorsCache[cacheKey]) return collaboratorsCache[cacheKey];
 
-  const owner = appConfig.repoOwner;
-  const repo = appConfig.repoName;
+  let owner, repo;
+  if (repoKey && repoKey.includes('/')) {
+    [owner, repo] = repoKey.split('/');
+  } else {
+    owner = appConfig.repoOwner;
+    repo = appConfig.repoName;
+  }
   if (!owner || !repo) return [];
 
   try {
@@ -1431,11 +1447,11 @@ ipcMain.handle('get-collaborators', async () => {
       `gh api "repos/${owner}/${repo}/collaborators?per_page=100"`
     );
     const collabs = JSON.parse(stdout || '[]');
-    collaboratorsCache = collabs.map(c => ({
+    collaboratorsCache[cacheKey] = collabs.map(c => ({
       login: c.login,
       avatar_url: c.avatar_url
     }));
-    return collaboratorsCache;
+    return collaboratorsCache[cacheKey];
   } catch (err) {
     console.error('[collaborators] fetch failed:', err.message);
     return [];

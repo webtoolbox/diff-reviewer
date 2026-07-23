@@ -805,6 +805,11 @@ async function submitReview(eventType) {
           prInfo.innerHTML += ` <span style="color:#58a6ff">(${aiCount} sent to AI)</span>`;
         }
 
+        // Auto-remove this PR from the cached list
+        if (review.prNumber && cachedPrList) {
+          cachedPrList = cachedPrList.filter(pr => pr.number !== review.prNumber);
+        }
+
         // Collect feedback for rules analysis
         const feedback = [];
         for (const c of comments) {
@@ -966,10 +971,24 @@ window.electronAPI.onLoadDiff((data) => {
 });
 
 // Fetch config from main process
-window.electronAPI.getConfig().then((config) => {
+window.electronAPI.getConfig().then(async (config) => {
   if (config.prNumber) prNumberInput.value = config.prNumber;
   if (config.aiTagPrefix) aiTagPrefix = config.aiTagPrefix;
   fetchCollaborators();
+
+  // Load repos and pre-fetch PRs on startup
+  try {
+    const { repos } = await window.electronAPI.listRepos();
+    checkedRepos = (repos || []).filter(r => r.checked);
+    if (checkedRepos.length > 0) {
+      const reposToFetch = checkedRepos.map(r => ({ owner: r.owner, name: r.name }));
+      const { prs } = await window.electronAPI.listAllPrs({ repos: reposToFetch });
+      if (prs && prs.length > 0) {
+        cachedPrList = prs;
+        cachedPrListTime = Date.now();
+      }
+    }
+  } catch {}
 }).catch(() => {});
 
 // ===================== IMAGE PASTE =====================
@@ -1044,9 +1063,9 @@ const mentionState = {
   dropdown: null
 };
 
-async function fetchCollaborators() {
+async function fetchCollaborators(repoKey) {
   try {
-    collaborators = await window.electronAPI.getCollaborators();
+    collaborators = await window.electronAPI.getCollaborators(repoKey);
   } catch (e) {
     collaborators = [];
   }
@@ -1339,10 +1358,10 @@ prNumberInput.addEventListener('keydown', async (e) => {
   }
 });
 
-async function loadPrByNumber(prNumber) {
+async function loadPrByNumber(prNumber, repoKey) {
   prInfo.innerHTML = `<strong>Loading PR #${prNumber}...</strong>`;
   try {
-    const result = await window.electronAPI.loadPr(prNumber);
+    const result = await window.electronAPI.loadPr({ prNumber, repo: repoKey });
     if (result.error) {
       prInfo.innerHTML = `<strong style="color:#f85149">Error:</strong> ${result.error}`;
       return;
@@ -1378,6 +1397,9 @@ async function loadPrByNumber(prNumber) {
 
     // Build info bar
     updatePrInfoBar(prNumber, currentPrTitle, result);
+
+    // Fetch collaborators from this PR's repo
+    if (repoKey) fetchCollaborators(repoKey);
 
     // Load commits for this PR
     loadPrCommits(prNumber);
@@ -1550,9 +1572,11 @@ function renderPrList(prs, filterText) {
   // Wire up click handlers
   prDropdown.querySelectorAll('.pr-item-content').forEach(content => {
     content.addEventListener('click', async () => {
-      const num = parseInt(content.closest('.pr-item').dataset.pr, 10);
+      const prItem = content.closest('.pr-item');
+      const num = parseInt(prItem.dataset.pr, 10);
+      const repo = prItem.dataset.repo || '';
       closePrDropdown();
-      await loadPrByNumber(num);
+      await loadPrByNumber(num, repo);
     });
   });
 
@@ -1567,7 +1591,7 @@ function renderPrList(prs, filterText) {
       if (result.error) {
         prInfo.innerHTML = `<strong style="color:#f85149">Error:</strong> ${result.error}`;
       } else {
-        prInfo.textContent = 'No diff loaded';
+        prInfo.textContent = '';
       }
     });
   });
