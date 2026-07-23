@@ -1410,16 +1410,42 @@ async function openPrDropdown() {
 
   prDropdown.classList.add('open');
   prDropdownOpen = true;
-  prDropdown.innerHTML = '<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-loading">Loading...</div>';
 
-  const { prs, error } = await window.electronAPI.listPrs();
+  // Show cached results immediately if available
+  const now = Date.now();
+  const cacheValid = cachedPrList && (now - cachedPrListTime < PR_CACHE_TTL);
 
-  if (error) {
-    prDropdown.innerHTML = `<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-empty">Error: ${escapeHtml(error)}</div>`;
-    return;
+  if (cacheValid) {
+    renderPrList(cachedPrList);
+    // Refresh in background
+    refreshPrList();
+  } else {
+    prDropdown.innerHTML = '<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-loading">Loading...</div>';
+    const { prs, error } = await window.electronAPI.listPrs();
+    if (error) {
+      prDropdown.innerHTML = `<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-empty">Error: ${escapeHtml(error)}</div>`;
+      return;
+    }
+    cachedPrList = prs;
+    cachedPrListTime = Date.now();
+    renderPrList(prs);
   }
+}
 
-  if (prs.length === 0) {
+// Refresh PR list in background (update cache and re-render if dropdown is open)
+async function refreshPrList() {
+  try {
+    const { prs, error } = await window.electronAPI.listPrs();
+    if (error || !prs) return;
+    cachedPrList = prs;
+    cachedPrListTime = Date.now();
+    if (prDropdownOpen) renderPrList(prs);
+  } catch {}
+}
+
+// Render PR list into the dropdown
+function renderPrList(prs) {
+  if (!prs || prs.length === 0) {
     prDropdown.innerHTML = '<div class="pr-dropdown-header">Pull Requests Pending Review</div><div class="pr-empty">No PRs match your filter</div>';
     return;
   }
@@ -1498,7 +1524,7 @@ const filterSelectAll = document.getElementById('filter-select-all');
 const filterSelectNone = document.getElementById('filter-select-none');
 
 let fileFilterOpen = false;
-let activeExtensions = [];
+let activeExtensions = null;
 let allExtensionsInDiff = [];
 
 // All possible file extensions (comprehensive list)
@@ -1697,6 +1723,9 @@ if (origRenderFilteredDiff) {
 let currentDiffContent = null;
 let currentDiffFilePath = null;
 let currentPrTitle = '';
+let cachedPrList = null;
+let cachedPrListTime = 0;
+const PR_CACHE_TTL = 2 * 60 * 60 * 1000; // 2 hours
 let currentPrNumber = null;
 let currentPrBody = '';
 
@@ -2588,6 +2617,29 @@ const btnPrefsClose = document.getElementById('btn-prefs-close');
 const btnPrefsCancel = document.getElementById('btn-prefs-cancel');
 const btnPrefsSave = document.getElementById('btn-prefs-save');
 const prefsSaved = document.getElementById('prefs-saved');
+const prefsSidebar = document.getElementById('prefs-sidebar');
+
+function switchPrefsSection(sectionName) {
+  if (!prefsSidebar) return;
+  // Update sidebar active state
+  prefsSidebar.querySelectorAll('.prefs-sidebar-item').forEach(item => {
+    item.classList.toggle('active', item.dataset.section === sectionName);
+  });
+  // Show/hide panels
+  document.querySelectorAll('.prefs-panel').forEach(panel => {
+    panel.classList.toggle('active', panel.dataset.section === sectionName);
+  });
+}
+
+// Sidebar click handler (event delegation)
+if (prefsSidebar) {
+  prefsSidebar.addEventListener('click', (e) => {
+    const item = e.target.closest('.prefs-sidebar-item');
+    if (item && item.dataset.section) {
+      switchPrefsSection(item.dataset.section);
+    }
+  });
+}
 
 // Preference field IDs and their config paths
 const prefFields = [
@@ -2643,6 +2695,9 @@ async function openPreferences() {
         el.value = value !== undefined && value !== null ? value : '';
       }
     }
+
+    // Reset to first section
+    switchPrefsSection('repository');
 
     prefsOverlay.style.display = 'flex';
   } catch (err) {

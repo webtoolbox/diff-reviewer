@@ -121,7 +121,23 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 
 ## Installation
 
-### macOS
+### Pre-built Applications
+
+Pre-built applications are available for download from [GitHub Actions](https://github.com/webtoolbox/diff-reviewer/actions). Each build produces platform-specific installers:
+
+- **macOS**: `.dmg` installer
+- **Linux**: `.deb` package
+- **Windows**: `.exe` installer
+
+Download the latest build for your platform, install, and you're ready to go.
+
+### Build from Source
+
+#### Prerequisites
+- **Node.js** 18+ and npm
+- **git** and **gh** (GitHub CLI) — `gh` must be authenticated (`gh auth login`)
+
+#### macOS
 
 #### From Source
 ```bash
@@ -146,10 +162,6 @@ cd diff-reviewer
 npm install
 npm start
 ```
-
-#### Prerequisites
-- **Node.js** 18+ and npm
-- **git** and **gh** (GitHub CLI) — `gh` must be authenticated (`gh auth login`)
 
 #### Build Linux Package (optional)
 ```bash

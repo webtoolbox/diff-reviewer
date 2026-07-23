@@ -779,12 +779,27 @@ ipcMain.handle('list-prs', async () => {
   const filter = appConfig.prFilter || {};
 
   return new Promise((resolve) => {
-    const args = `api 'repos/${owner}/${repo}/pulls?state=open&per_page=50' --jq '[.[] | {number, title, author: .user.login, created: .created_at, reviewers: [.requested_reviewers[].login], draft}]'`;
-    execGh(args, { timeout: 30000 })
-      .then(stdout => {
-        let prs = [];
-        try { prs = JSON.parse(stdout); } catch { resolve({ prs: [], error: 'Failed to parse PR list' }); return; }
+    const fetchPage = (page) => {
+      const args = `api 'repos/${owner}/${repo}/pulls?state=open&per_page=100&page=${page}' --jq '[.[] | {number, title, author: .user.login, created: .created_at, reviewers: [.requested_reviewers[].login], draft}]'`;
+      return execGh(args, { timeout: 30000 });
+    };
 
+    const fetchAll = async () => {
+      let allPrs = [];
+      let page = 1;
+      while (true) {
+        const stdout = await fetchPage(page);
+        let batch = [];
+        try { batch = JSON.parse(stdout); } catch { break; }
+        allPrs = allPrs.concat(batch);
+        if (batch.length < 100) break;
+        page++;
+      }
+      return allPrs;
+    };
+
+    fetchAll()
+      .then(prs => {
         if (filter.reviewRequested) {
           prs = prs.filter(pr => pr.reviewers && pr.reviewers.includes(owner));
         }
