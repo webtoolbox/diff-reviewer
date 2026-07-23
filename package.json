@@ -7,7 +7,8 @@
     "start": "electron .",
     "test": "electron test.js",
     "build": "electron-builder --mac",
-    "build:dir": "electron-builder --mac --dir"
+    "build:dir": "electron-builder --mac --dir",
+    "postbuild": "cp -R 'dist/mac-arm64/Diff Reviewer.app' /Applications/ 2>/dev/null || true"
   },
   "keywords": [
     "code-review",
