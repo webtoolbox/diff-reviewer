@@ -7,7 +7,7 @@ A desktop AI-native diff reviewer for GitHub PRs with voice commands, before/aft
 ## Why PR Reviewer?
 Reviewing PRs on GitHub means clicking into a PR, reading the description, scanning commits and comments, then navigating to the Files Changed tab before you can even see the diff. PR Reviewer skips all of that — it loads the diff immediately and automatically moves to the next PR when you're done.
 
-**Desktop AI agent integration**: Tag @hermes (or any other agent) in any comment to message a desktop AI agent directly from the review. The agent can help with code analysis, answer questions, or assist with changes. Use @ask to get the response displayed inline in the app.
+**Desktop AI agent integration**: Tag @hermes (or any other supported agent) in any comment to message a desktop AI agent directly from the review. The agent can help with code analysis, answer questions, or assist with changes. Use @ask to get the response displayed inline in the app. Supported agents: **Hermes**, **Claude Code**, **Cursor**, **GitHub Copilot CLI**, **Aider**, and **Codex CLI**.
 
 **Voice commands**: Press Ctrl+B to speak review commands naturally. Add line comments, file comments, approve PRs, request changes, ask questions about code — all via voice. The AI interprets your spoken instructions and executes them on the review.
 
@@ -29,8 +29,9 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 - **Before/after design comparison** — PR descriptions with before/after screenshot pairs get a comparison icon. Click to open a full-screen slideshow with side-by-side images, navigation arrows, and click-to-zoom.
 
 ![Before/After Comparison Slideshow](screenshots/before-after-slideshow.png)
-- **Desktop AI agent integration** — tag @hermes (or any other agent) in any comment to message a desktop AI agent directly from the review. Use @ask to get the response displayed inline.
-- **Auto-fix with AI** — when requesting changes, review comments are sent to the Hermes AI agent which creates a new PR with the necessary fixes
+- **Desktop AI agent integration** — tag @hermes (or any other supported agent) in any comment to message a desktop AI agent directly from the review. Use @ask to get the response displayed inline.
+- **Supported AI agents**: Hermes, Claude Code, Cursor, GitHub Copilot CLI, Aider, Codex CLI — select your preferred agent in Preferences > AI Agent
+- **Auto-fix with AI** — when requesting changes, review comments are sent to the configured AI agent which creates a new PR with the necessary fixes
 - **Automated agent rule proposals** — after submitting a review, AI analyzes feedback against AGENTS.md and proposes new rules
 
 ### Core Review Features
@@ -85,7 +86,8 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 ![Mention Dropdown](screenshots/mention-dropdown.jpg)
 
 ### Auto-fix with AI
-- **Automatic PR creation** — review comments are sent to the Hermes AI agent which creates a new PR with the necessary fixes
+- **Automatic PR creation** — review comments are sent to the configured AI agent which creates a new PR with the necessary fixes
+- **Supported agents**: Hermes, Claude Code, Cursor, GitHub Copilot CLI, Aider, Codex CLI
 - **Follows repo guidelines** — the agent follows the AGENTS.md file in the repository
 - **Participant management** — all PR participants (author, assignees, reviewers) except the reviewer are added to the new PR
 - **Configurable** — enable/disable via `autoFix.enabled` in config.json (enabled by default)
@@ -118,6 +120,16 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 - **Default retention**: 6 months (180 days)
 
 ## Installation
+
+### Prerequisites
+- **GitHub CLI (gh)** — required. Must be authenticated (`gh auth login`). The app checks for `gh` on startup and shows install instructions if missing.
+- **One AI agent** — required for auto-fix and review features. The app auto-detects the first available agent on first launch. Supported:
+  - [Hermes](https://github.com/NousResearch/hermes-agent) — `npm install -g @nousresearch/hermes-agent`
+  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) — `npm install -g @anthropic-ai/claude-code`
+  - [Cursor](https://cursor.sh) — `brew install --cask cursor`
+  - [GitHub Copilot CLI](https://githubnext.github.com/copilot-cli) — `npm install -g @githubnext/copilot-cli`
+  - [Aider](https://aider.chat) — `pip install aider-chat`
+  - [Codex CLI](https://github.com/openai/codex) — `npm install -g @openai/codex`
 
 ### Pre-built Applications
 Pre-built applications are available for download from [GitHub Actions](https://github.com/webtoolbox/pr-reviewer/actions). Each build produces platform-specific installers:
