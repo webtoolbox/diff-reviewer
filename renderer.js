@@ -3024,6 +3024,7 @@ const prefFields = [
   { id: 'pref-ai-tag', key: 'aiTagPrefix', type: 'text' },
   { id: 'pref-autofix-enabled', key: 'autoFix.enabled', type: 'checkbox' },
   { id: 'pref-rules-enabled', key: 'rules.enabled', type: 'checkbox' },
+  { id: 'pref-auto-update', key: 'autoUpdate', type: 'checkbox' },
   { id: 'pref-editor-cmd', key: 'editorCommand', type: 'text' },
   { id: 'pref-img-enabled', key: 'imageUpload.enabled', type: 'checkbox' },
   { id: 'pref-s3-bucket', key: 'imageUpload.s3Bucket', type: 'text' },
@@ -3123,6 +3124,69 @@ document.addEventListener('keydown', (e) => {
 
 // Listen for menu triggers
 window.electronAPI.onOpenPreferences(() => openPreferences());
+
+// ===================== AUTO-UPDATE UI =====================
+
+// Auto-update checkbox handler
+const prefAutoUpdate = document.getElementById('pref-auto-update');
+if (prefAutoUpdate) {
+  prefAutoUpdate.addEventListener('change', async () => {
+    try {
+      await window.electronAPI.setAutoUpdate(prefAutoUpdate.checked);
+    } catch (err) {
+      console.error('[auto-update] toggle failed:', err);
+    }
+  });
+}
+
+// Check for updates button
+const btnCheckUpdate = document.getElementById('btn-check-update');
+const updateStatus = document.getElementById('update-status');
+if (btnCheckUpdate) {
+  btnCheckUpdate.addEventListener('click', async () => {
+    btnCheckUpdate.disabled = true;
+    btnCheckUpdate.textContent = 'Checking...';
+    updateStatus.textContent = '';
+
+    try {
+      const result = await window.electronAPI.checkUpdate();
+      if (result.upToDate) {
+        updateStatus.textContent = '✓ Up to date';
+        updateStatus.style.color = '#3fb950';
+      } else if (result.error) {
+        updateStatus.textContent = `Error: ${result.error}`;
+        updateStatus.style.color = '#f85149';
+      } else {
+        updateStatus.innerHTML = `Update available:<br><pre style="margin:8px 0;padding:8px;background:#161b22;border:1px solid #30363d;border-radius:6px;font-size:12px;max-height:150px;overflow-y:auto">${escapeHtml(result.commits)}</pre>`;
+        updateStatus.style.color = '#d29922';
+
+        // Add apply button
+        const applyBtn = document.createElement('button');
+        applyBtn.textContent = 'Install Update';
+        applyBtn.style.cssText = 'background:#238636;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer;margin-top:8px';
+        applyBtn.addEventListener('click', async () => {
+          applyBtn.disabled = true;
+          applyBtn.textContent = 'Installing...';
+          updateStatus.textContent = 'Pulling changes, building, and restarting...';
+          updateStatus.style.color = '#58a6ff';
+          try {
+            await window.electronAPI.applyUpdate();
+          } catch (err) {
+            updateStatus.textContent = `Error: ${err.message}`;
+            updateStatus.style.color = '#f85149';
+          }
+        });
+        updateStatus.appendChild(applyBtn);
+      }
+    } catch (err) {
+      updateStatus.textContent = `Error: ${err.message}`;
+      updateStatus.style.color = '#f85149';
+    }
+
+    btnCheckUpdate.disabled = false;
+    btnCheckUpdate.textContent = 'Check for Updates';
+  });
+}
 
 // Menu: File > Export Review > As Markdown
 window.electronAPI.onExportMarkdown(() => exportAsMarkdown());

@@ -1590,6 +1590,230 @@ ipcMain.handle('auto-detect-agent', async () => {
   return { detected: false, agent: null };
 });
 
+// ===================== AUTO-UPDATE =====================
+
+let autoUpdateInterval = null;
+let lastUpdateCheck = 0;
+
+// Check for updates, pull, build, and reinstall
+async function checkAndUpdate() {
+  try {
+    const repoDir = app.getAppPath();
+    const privateConfigPath = path.join(app.getPath('home'), '.config', 'pr-reviewer', 'config.json');
+
+    // Check if auto-update is enabled
+    let autoUpdateEnabled = true;
+    try {
+      const raw = fs.readFileSync(privateConfigPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      autoUpdateEnabled = parsed.autoUpdate !== false;
+    } catch {}
+
+    if (!autoUpdateEnabled) return;
+
+    // Check if more than 1 day since last check
+    const ONE_DAY = 24 * 60 * 60 * 1000;
+    try {
+      const raw = fs.readFileSync(privateConfigPath, 'utf8');
+      const parsed = JSON.parse(raw);
+      lastUpdateCheck = parsed.lastUpdateCheck || 0;
+    } catch {}
+
+    if (lastUpdateCheck && (Date.now() - lastUpdateCheck) < ONE_DAY) {
+      return;
+    }
+
+    console.log('[auto-update] Checking for updates...');
+
+    // Fetch latest from remote
+    exec('git fetch origin main', { cwd: repoDir, timeout: 30000 }, (fetchErr) => {
+      if (fetchErr) {
+        console.error('[auto-update] fetch failed:', fetchErr.message);
+        return;
+      }
+
+      // Check if there are new commits
+      exec('git rev-parse HEAD', { cwd: repoDir, encoding: 'utf8' }, (localErr, localSha) => {
+        if (localErr) return;
+
+        exec('git rev-parse origin/main', { cwd: repoDir, encoding: 'utf8' }, (remoteErr, remoteSha) => {
+          if (remoteErr) return;
+
+          if (localSha.trim() === remoteSha.trim()) {
+            console.log('[auto-update] Already up to date');
+            updateLastCheckTime();
+            return;
+          }
+
+          console.log('[auto-update] Update available, pulling...');
+          exec('git pull origin main', { cwd: repoDir, timeout: 30000 }, (pullErr) => {
+            if (pullErr) {
+              console.error('[auto-update] pull failed:', pullErr.message);
+              return;
+            }
+
+            console.log('[auto-update] Installing dependencies...');
+            exec('npm install', { cwd: repoDir, timeout: 120000 }, (installErr) => {
+              if (installErr) {
+                console.error('[auto-update] npm install failed:', installErr.message);
+                return;
+              }
+
+              console.log('[auto-update] Building...');
+              exec('npm run build', { cwd: repoDir, timeout: 300000 }, (buildErr) => {
+                if (buildErr) {
+                  console.error('[auto-update] build failed:', buildErr.message);
+                  return;
+                }
+
+                console.log('[auto-update] Update complete! Restarting...');
+                updateLastCheckTime();
+
+                // Restart the app
+                app.relaunch();
+                app.exit(0);
+              });
+            });
+          });
+        });
+      });
+    });
+  } catch (err) {
+    console.error('[auto-update] error:', err.message);
+  }
+}
+
+function updateLastCheckTime() {
+  lastUpdateCheck = Date.now();
+  try {
+    const privateDir = path.join(app.getPath('home'), '.config', 'pr-reviewer');
+    const privateConfigPath = path.join(privateDir, 'config.json');
+    let config = {};
+    try {
+      const raw = fs.readFileSync(privateConfigPath, 'utf8');
+      config = JSON.parse(raw);
+    } catch {}
+    config.lastUpdateCheck = lastUpdateCheck;
+    fs.mkdirSync(privateDir, { recursive: true });
+    fs.writeFileSync(privateConfigPath, JSON.stringify(config, null, 2));
+  } catch {}
+}
+
+// Start auto-update check interval (every 6 hours)
+function startAutoUpdate() {
+  if (autoUpdateInterval) clearInterval(autoUpdateInterval);
+  // Check immediately on startup
+  checkAndUpdate();
+  // Then every 6 hours
+  autoUpdateInterval = setInterval(checkAndUpdate, 6 * 60 * 60 * 1000);
+}
+
+// IPC: manual update check
+ipcMain.handle('check-update', async () => {
+  try {
+    const repoDir = app.getAppPath();
+    const { stdout: localSha } = await new Promise((resolve, reject) => {
+      exec('git rev-parse HEAD', { cwd: repoDir, encoding: 'utf8' }, (err, stdout, stderr) => {
+        if (err) reject(err); else resolve({ stdout, stderr });
+      });
+    });
+
+    await new Promise((resolve, reject) => {
+      exec('git fetch origin main', { cwd: repoDir, timeout: 30000 }, (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
+
+    const { stdout: remoteSha } = await new Promise((resolve, reject) => {
+      exec('git rev-parse origin/main', { cwd: repoDir, encoding: 'utf8' }, (err, stdout, stderr) => {
+        if (err) reject(err); else resolve({ stdout, stderr });
+      });
+    });
+
+    if (localSha.trim() === remoteSha.trim()) {
+      return { upToDate: true };
+    }
+
+    // Get commit log between local and remote
+    const { stdout: log } = await new Promise((resolve, reject) => {
+      exec(`git log HEAD..origin/main --oneline`, { cwd: repoDir, encoding: 'utf8' }, (err, stdout, stderr) => {
+        if (err) reject(err); else resolve({ stdout, stderr });
+      });
+    });
+
+    return { upToDate: false, commits: log.trim() };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// IPC: apply update
+ipcMain.handle('apply-update', async () => {
+  try {
+    const repoDir = app.getAppPath();
+
+    await new Promise((resolve, reject) => {
+      exec('git pull origin main', { cwd: repoDir, timeout: 30000 }, (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
+
+    await new Promise((resolve, reject) => {
+      exec('npm install', { cwd: repoDir, timeout: 120000 }, (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
+
+    await new Promise((resolve, reject) => {
+      exec('npm run build', { cwd: repoDir, timeout: 300000 }, (err) => {
+        if (err) reject(err); else resolve();
+      });
+    });
+
+    updateLastCheckTime();
+
+    // Restart the app
+    app.relaunch();
+    app.exit(0);
+
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// IPC: toggle auto-update
+ipcMain.handle('set-auto-update', async (event, enabled) => {
+  try {
+    const privateDir = path.join(app.getPath('home'), '.config', 'pr-reviewer');
+    const privateConfigPath = path.join(privateDir, 'config.json');
+    let config = {};
+    try {
+      const raw = fs.readFileSync(privateConfigPath, 'utf8');
+      config = JSON.parse(raw);
+    } catch {}
+    config.autoUpdate = enabled;
+    fs.mkdirSync(privateDir, { recursive: true });
+    fs.writeFileSync(privateConfigPath, JSON.stringify(config, null, 2));
+
+    if (enabled) {
+      startAutoUpdate();
+    } else if (autoUpdateInterval) {
+      clearInterval(autoUpdateInterval);
+      autoUpdateInterval = null;
+    }
+
+    return { success: true };
+  } catch (err) {
+    return { error: err.message };
+  }
+});
+
+// Start auto-update when app is ready
+app.whenReady().then(() => {
+  startAutoUpdate();
+});
+
 // Open file in editor at specific line
 ipcMain.handle('open-file-in-editor', async (event, { filePath, line }) => {
   const editor = appConfig.editorCommand || 'code';
