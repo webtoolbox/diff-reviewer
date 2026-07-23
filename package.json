@@ -30,12 +30,12 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/webtoolbox/diff-reviewer.git"
+    "url": "https://github.com/webtoolbox/pr-reviewer.git"
   },
   "bugs": {
-    "url": "https://github.com/webtoolbox/diff-reviewer/issues"
+    "url": "https://github.com/webtoolbox/pr-reviewer/issues"
   },
-  "homepage": "https://github.com/webtoolbox/diff-reviewer#readme",
+  "homepage": "https://github.com/webtoolbox/pr-reviewer#readme",
   "build": {
     "appId": "com.webtoolbox.pr-reviewer",
     "productName": "PR Reviewer",

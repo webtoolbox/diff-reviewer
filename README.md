@@ -107,9 +107,9 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 
 ### Data Management
 - **Persistent storage** — all data stored locally:
-  - macOS: `~/Library/Application Support/diff-reviewer/`
-  - Linux: `~/.config/diff-reviewer/`
-  - Windows: `%APPDATA%\diff-reviewer\`
+  - macOS: `~/Library/Application Support/pr-reviewer/`
+  - Linux: `~/.config/pr-reviewer/`
+  - Windows: `%APPDATA%\pr-reviewer\`
   - `reviews/` — submitted review JSONs
   - `drafts/` — auto-saved comment drafts
   - `generated/` — generated PR diff files
@@ -120,7 +120,7 @@ Reviewing PRs on GitHub means clicking into a PR, reading the description, scann
 ## Installation
 
 ### Pre-built Applications
-Pre-built applications are available for download from [GitHub Actions](https://github.com/webtoolbox/diff-reviewer/actions). Each build produces platform-specific installers:
+Pre-built applications are available for download from [GitHub Actions](https://github.com/webtoolbox/pr-reviewer/actions). Each build produces platform-specific installers:
 
 - **macOS**: `.dmg` installer
 - **Linux**: `.deb` package
@@ -137,8 +137,8 @@ Download the latest build for your platform, install, and you're ready to go.
 
 #### From Source
 ```bash
-git clone https://github.com/webtoolbox/diff-reviewer.git
-cd diff-reviewer
+git clone https://github.com/webtoolbox/pr-reviewer.git
+cd pr-reviewer
 npm install
 npm start
 ```
@@ -152,8 +152,8 @@ npm run build
 
 ### Linux
 ```bash
-git clone https://github.com/webtoolbox/diff-reviewer.git
-cd diff-reviewer
+git clone https://github.com/webtoolbox/pr-reviewer.git
+cd pr-reviewer
 npm install
 npm start
 ```
@@ -165,14 +165,14 @@ npx electron-builder --linux
 ```
 
 #### Data Storage (Linux)
-App data is stored in `~/.config/diff-reviewer/` instead of the macOS path.
+App data is stored in `~/.config/pr-reviewer/` instead of the macOS path.
 
 ### Windows
 
 #### From Source
 ```bash
-git clone https://github.com/webtoolbox/diff-reviewer.git
-cd diff-reviewer
+git clone https://github.com/webtoolbox/pr-reviewer.git
+cd pr-reviewer
 npm install
 npm start
 ```
@@ -188,7 +188,7 @@ npx electron-builder --win
 - **git** and **gh** (GitHub CLI) — `gh` must be authenticated (`gh auth login`)
 
 #### Data Storage (Windows)
-App data is stored in `%APPDATA%\diff-reviewer\` (typically `C:\Users\<username>\AppData\Roaming\diff-reviewer\`).
+App data is stored in `%APPDATA%\pr-reviewer\` (typically `C:\Users\<username>\AppData\Roaming\pr-reviewer\`).
 
 ## Configuration
 
@@ -197,7 +197,7 @@ App data is stored in `%APPDATA%\diff-reviewer\` (typically `C:\Users\<username>
 The app uses a two-tier config system:
 
 1. **Public config** (in repo): `config.json` — generic defaults, committed to GitHub
-2. **Private config** (user-specific): `~/.config/diff-reviewer/config.json` — your personal settings
+2. **Private config** (user-specific): `~/.config/pr-reviewer/config.json` — your personal settings
 
 Private config overrides public config. Your private config should NOT be committed.
 
@@ -309,7 +309,7 @@ When `since-review` mode is active:
 
 All app data is stored in:
 ```
-~/Library/Application Support/diff-reviewer/
+~/Library/Application Support/pr-reviewer/
 ├── reviews/          # Submitted review JSONs
 ├── drafts/           # Auto-saved comment drafts
 ├── generated/        # Generated PR diff files

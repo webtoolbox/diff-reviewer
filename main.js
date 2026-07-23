@@ -25,10 +25,10 @@ function execGh(args, opts = {}) {
   });
 }
 
-// Load config: private (~/.config/diff-reviewer/config.json) overrides public (./config.json)
+// Load config: private (~/.config/pr-reviewer/config.json) overrides public (./config.json)
 function loadConfig() {
   const publicConfigPath = path.join(__dirname, 'config.json');
-  const privateConfigPath = path.join(app.getPath('home'), '.config', 'diff-reviewer', 'config.json');
+  const privateConfigPath = path.join(app.getPath('home'), '.config', 'pr-reviewer', 'config.json');
 
   const defaults = {
     aiCommand: 'hermes',
@@ -822,7 +822,7 @@ ipcMain.handle('list-prs', async () => {
 
 function loadReposConfig() {
   const publicConfigPath = path.join(__dirname, 'config.json');
-  const privateConfigPath = path.join(app.getPath('home'), '.config', 'diff-reviewer', 'config.json');
+  const privateConfigPath = path.join(app.getPath('home'), '.config', 'pr-reviewer', 'config.json');
 
   let publicRepos = [];
   try {
@@ -858,7 +858,7 @@ ipcMain.handle('list-repos', async () => {
 
 ipcMain.handle('save-repos', async (event, repos) => {
   try {
-    const privateDir = path.join(app.getPath('home'), '.config', 'diff-reviewer');
+    const privateDir = path.join(app.getPath('home'), '.config', 'pr-reviewer');
     const privateConfigPath = path.join(privateDir, 'config.json');
     fs.mkdirSync(privateDir, { recursive: true });
 
@@ -1478,7 +1478,7 @@ ipcMain.handle('save-preferences', async (event, prefs) => {
     if (prefs.rules !== undefined) appConfig.rules = { ...(appConfig.rules || {}), ...prefs.rules };
 
     // Save to private config file
-    const privateDir = path.join(app.getPath('home'), '.config', 'diff-reviewer');
+    const privateDir = path.join(app.getPath('home'), '.config', 'pr-reviewer');
     const privateConfigPath = path.join(privateDir, 'config.json');
     fs.mkdirSync(privateDir, { recursive: true });
     fs.writeFileSync(privateConfigPath, JSON.stringify(appConfig, null, 2));

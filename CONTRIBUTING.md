@@ -7,8 +7,8 @@ Thanks for your interest in contributing! This project is open source and welcom
 1. Fork this repository
 2. Clone your fork:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/diff-reviewer.git
-   cd diff-reviewer
+   git clone https://github.com/YOUR_USERNAME/pr-reviewer.git
+   cd pr-reviewer
    ```
 3. Install dependencies:
    ```bash
@@ -41,7 +41,7 @@ Thanks for your interest in contributing! This project is open source and welcom
 ## Project Structure
 
 ```
-diff-reviewer/
+pr-reviewer/
 ├── main.js          # Electron main process, IPC handlers, AI CLI integration
 ├── preload.js       # IPC bridge between main and renderer
 ├── renderer.js      # All UI logic: diff rendering, comments, shortcuts, auto-save
@@ -86,7 +86,7 @@ cd /path/to/your/repo
 git diff HEAD~1 > /tmp/test.diff
 
 # Run tests
-cd ~/Repos/diff-reviewer
+cd ~/Repos/pr-reviewer
 npx electron test.js /tmp/test.diff
 ```
 

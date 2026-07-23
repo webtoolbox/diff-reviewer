@@ -19,7 +19,7 @@ app.whenReady().then(async()=>{
     await w.webContents.executeJavaScript('openPreferences()');
     await new Promise(r=>setTimeout(r,300));
     let img=await w.capturePage();
-    fs.writeFileSync('/Users/sandeep/Repos/diff-reviewer/screenshots/preferences.jpg',img.toJPEG(90));
+    fs.writeFileSync('/Users/sandeep/Repos/pr-reviewer/screenshots/preferences.jpg',img.toJPEG(90));
     console.log('done');
     app.exit(0);
   });
